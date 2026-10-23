@@ -1,0 +1,13 @@
+{
+  "mode": "full",
+  "repeats": 1,
+  "seed": 20261024,
+  "no_readback": false,
+  "episode_count": 600,
+  "planned_episode_count": 600,
+  "python": "3.13.5",
+  "go": "go version go1.23.2 linux/amd64",
+  "platform": "Linux-6.18.55-x86_64-with-glibc2.41",
+  "research_ready": false,
+  "notes": "沙箱实验原始数据；尚未包含真实 Agent 跨域基准。"
+}

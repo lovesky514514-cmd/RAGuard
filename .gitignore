@@ -1,0 +1,29 @@
+# Python 缓存与测试临时文件
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.test
+.coverage
+
+# 本地状态、凭据和日志，不得上传
+data/
+logs/
+.env
+.env.*
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.pem
+*.key
+
+# 本机生成的实验结果不上传；仅跟踪固定探索样本
+results/*
+!results/README.md
+!results/trial_plan.csv
+!results/reference_smoke/
+!results/reference_fault_matrix/
+
+# 构建产物默认忽略，但固定的 Windows 沙箱是受校验的启动依赖
+*.exe
+!bin/raguard-mock.exe

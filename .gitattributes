@@ -1,0 +1,8 @@
+* text=auto
+*.py text eol=lf
+*.go text eol=lf
+*.md text eol=lf
+*.bat text eol=crlf
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.exe binary
