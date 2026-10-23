@@ -19,6 +19,8 @@ SECRET_PATTERNS = (
 
 
 # 只检测真实联系字段与带门牌的实体住址；网址、回环 IP 和协议示例不算实体地址。
+APPROVED_EMAIL = 'lovesky514514@gmail.com'
+APPROVED_CREDIT = 'SuKoYa'
 IDENTITY_PATTERNS = (
     ('电子邮箱', re.compile(r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}', re.IGNORECASE)),
     ('英文实体住址', re.compile(r'\b\d{1,6}\s+(?:[A-Za-z.]+\s+){1,5}(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd)\b', re.IGNORECASE)),
@@ -62,8 +64,13 @@ def check() -> list[str]:
             errors.append(f'疑似私钥或密钥硬编码：{relative}')
         if file.name != 'LICENSE':
             for kind, pattern in IDENTITY_PATTERNS:
-                if pattern.search(content):
+                for match in pattern.finditer(content):
+                    if kind == '电子邮箱' and match.group().lower() == APPROVED_EMAIL:
+                        continue
+                    if kind == '个人版权署名' and match.group().strip().lower().endswith(' ' + APPROVED_CREDIT.lower()):
+                        continue
                     errors.append(f'包含禁止发布的{kind}：{relative}')
+                    break
 
     binary = ROOT / 'bin' / 'raguard-mock.exe'
     digest_file = ROOT / 'bin' / 'raguard-mock.exe.sha256'
