@@ -1,64 +1,52 @@
-# RAGuard
+<h1 align="center">RAGuard</h1>
 
-面向工具型 Agent 的安全恢复研究系统。Python 负责状态管理与恢复判断，Go 负责可注入故障的本地服务。仅用于研究沙箱，不连接真实支付或业务系统。
+<p align="center">Risk-Aware and Side-Effect-Safe Recovery for Tool-Using Agents</p>
+<p align="center">面向工具调用型 Agent 的安全恢复研究系统</p>
 
-## Windows 快速启动
+RAGuard 是一个本地研究原型：Python 负责可信业务身份、持久化副作用账本与恢复策略，Go 负责可控故障注入和独立副作用真值。它区分“调用失败”和“业务未执行”，在证据不足时优先安全停止。
 
-直接启动需要 **Python 3.11+**；随包已提供 Windows x64 Go 沙箱程序，启动、实验和日常检查均不强制安装 Go。若要自行重新编译沙箱、运行 Go 源码单元测试和 `go vet`，需另行安装 **Go 1.21+**。安装 Python 时请启用 PATH，并重新打开终端。项目核心模块无需额外安装第三方 Python 包。
+> **研究边界：** 不是生产安全网关，不保证通用 exactly-once；现有探索结果尚未证明优于具有稳定业务级幂等键的强基线 B3。
 
-1. **解压全部文件**，不要在压缩包预览窗口里双击。
-2. 双击根目录的 **`启动.bat`**，自动运行经过哈希校验的内置沙箱、启动网关并执行订单演示。
-3. 启动后，窗口保持打开；按 `Ctrl+C` 关闭服务。出现错误时窗口不会自动关闭。
-4. 双击 **`检查.bat`** 执行 Python、编码及内置沙箱验证；双击 **`实验.bat`** 运行真实故障试验。未安装 Go 时，Go 源码测试和静态检查会被明确标为未执行。
+## Start here
 
-如未能启动，请将 **`logs/运行日志.txt`** 发给开发者。已经明确的问题与修复处理都记录在 **`docs/问题记录.md`**，其他文件不再重复记录排错历史。
+- [使用说明](docs/USAGE.md)：接口、故障注入和启动步骤
+- [设计说明](docs/DESIGN.md)：身份、账本、证据与恢复
+- [安全边界](docs/SECURITY.md)：重试、回放与补偿限制
+- [实验协议](docs/EXPERIMENTS.md)：基线、物理真值和统计
+- [问题记录](docs/问题记录.md)：持续维护的唯一问题记录
 
-> 端口：Go 沙箱 `127.0.0.1:8181`；Python 网关 `127.0.0.1:8088`。端口被占用时程序会报错退出，不接管其他服务。
+## Windows quick start
 
-## Linux / macOS
+Windows x64 需要 Python 3.11+。内置经校验的 Go 沙箱可供普通演示与实验使用，不需要额外安装 Go。
 
-```bash
-sh scripts/start.sh          # 启动演示
-sh scripts/check.sh          # 检查代码
-sh scripts/run_smoke.sh      # 故障冒烟实验
-```
+1. 完整解压项目，双击 **启动.bat** 运行本地演示。
+2. 双击 **实验.bat** 执行故障及工作流试验。
+3. 双击 **检查.bat** 进行本地自检。Go 源码构建与测试需要另装 Go 1.21+。
 
-跨平台无交互启动检查（完成演示后自动关闭进程）：
+演示服务仅监听本机回环接口。遇到问题请查看本机生成的日志，**不要公开包含设备信息的日志或密钥**。
 
-```bash
-python scripts/launcher.py start --self-test
-```
+## What it does
 
-## 核心目录
+| 能力 | 作用 |
+| --- | --- |
+| Trusted identity | 同一可信业务引用不会因 Agent 改写步骤名而变成新业务 |
+| Persistent ledger | 写操作前持久登记，支持单机恢复与执行代次约束 |
+| Evidence-aware recovery | 按回读证据与服务端幂等契约决定回放、重试或停止 |
+| Safe stop & compensation | 未知写操作不盲目重发，补偿需授权及依赖检查 |
+| Research benchmarks | Go 故障沙箱、B0–B3 对照、参考 Saga 和统计模块 |
 
-| 路径 | 内容 |
-|---|---|
-| `raguard/` | 业务身份校验、持久账本、执行与恢复策略、HTTP 网关 |
-| `mock/` | Go 工具沙箱、真实连接断开与副作用真值 |
-| `bench/` | B0–B4 对照、故障矩阵、跨步骤 Saga、统计与评估 |
-| `tests/` | 安全属性、并发、端到端与启动故障回归 |
-| `scripts/` | 启动器、自检与编码检查 |
-| `results/` | 研究用探索结果（不等于论文正式数据） |
-| `logs/` | 本机运行日志（生成文件不纳入源码交付） |
-| `docs/问题记录.md` | 唯一持续更新的问题、修复与验证记录 |
+## Source layout
 
-设计边界参见 `docs/DESIGN.md`，实验方法参见 `docs/EXPERIMENTS.md`，API 请求见 `docs/USAGE.md`，安全约束参见 `docs/SECURITY.md`。
+| 模块 | 内容 |
+| --- | --- |
+| Python Gateway | 请求校验与恢复入口 |
+| Identity & Ledger | 可信身份和持久状态 |
+| Go Sandbox | 故障与外部效果真值 |
+| Benchmarks | 对照实验与统计 |
+| Tests & Scripts | 回归验证及分发检查 |
 
-## 开源许可
+## Licensing and distribution
 
-源代码按 [Apache License 2.0](LICENSE) 许可，版权说明见 [NOTICE](NOTICE)。
-公开的是研究沙箱代码，不是经过生产安全认证的第三方 API 代理。
-随仓库提供的 Windows 沙箱程序由 `mock/` 的 Go 代码构建，使用前仍需检查 SHA-256。
-发布前执行 `python scripts/check_public_release.py` 和 `python scripts/verify_manifest.py`。
+项目按 [Apache License 2.0](LICENSE) 开源；署名 **SuKoYa**，联系邮箱 **[lovesky514514@gmail.com](mailto:lovesky514514@gmail.com)**。分发说明见 [NOTICE](NOTICE)。
 
-公开发行材料不填写个人姓名、联系邮箱或实体住址；Git 提交历史元数据另行审批。
-
-## GitHub 源码与安全
-
-仓库不提交 `data/`、`logs/` 或本机生成的实验结果。`bin/raguard-mock.exe` 是本地 Windows x64 演示依赖，必须与同目录哈希文件一起保留。当前随仓库的 `results/reference_*` 是**探索性参考数据**，不是 Windows 用户本次生成的实验结果。
-
-## 科研状态
-
-本地模拟实验已经具备可运行的故障对照，但还缺真实多 Agent 跨域验证与正式统计实验。已有探索中，RAGuard **没有优于强幂等基线 B3**；不可将现有数据声称为论文已验证的创新优势。
-
-源文件注释以简体中文为主，UTF-8 无 BOM。单个工具的测试通过不代表真实第三方 API 可以保证 exactly-once。
+研究结果目前仅供探索，不代表 SCI 论文创新性已经得到验证。本仓库在公开前仍需完成隐私和自动化测试审批；**不会公开真实姓名、实体住址或个人电脑的绝对路径**。
