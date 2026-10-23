@@ -44,6 +44,13 @@ python scripts/launcher.py start --self-test
 
 设计边界参见 `docs/DESIGN.md`，实验方法参见 `docs/EXPERIMENTS.md`，API 请求见 `docs/USAGE.md`，安全约束参见 `docs/SECURITY.md`。
 
+## 开源许可
+
+源代码按 [Apache License 2.0](LICENSE) 许可，版权说明见 [NOTICE](NOTICE)。
+公开的是研究沙箱代码，不是经过生产安全认证的第三方 API 代理。
+随仓库提供的 Windows 沙箱程序由 `mock/` 的 Go 代码构建，使用前仍需检查 SHA-256。
+发布前执行 `python scripts/check_public_release.py` 和 `python scripts/verify_manifest.py`。
+
 ## GitHub 源码与安全
 
 仓库不提交 `data/`、`logs/` 或本机生成的实验结果。`bin/raguard-mock.exe` 是本地 Windows x64 演示依赖，必须与同目录哈希文件一起保留。当前随仓库的 `results/reference_*` 是**探索性参考数据**，不是 Windows 用户本次生成的实验结果。

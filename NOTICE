@@ -1,0 +1,6 @@
+RAGuard
+Copyright 2026 SuKoYa
+
+This distribution is licensed under the Apache License, Version 2.0.
+The bundled Windows sandbox executable is built from the Go source in mock/.
+No third-party source code is included in the Python or Go runtime modules.
