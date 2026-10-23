@@ -28,6 +28,7 @@ jobs:
           python -m compileall -q raguard bench tests audit scripts
           python -m unittest discover -s tests -v
           python -m unittest discover -s bench -p 'test_*.py' -v
+          python -m bench.identity_drift --repeats 1 --output results/identity_drift_ci
           cd mock
           go test ./...
           go vet ./...

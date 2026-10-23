@@ -16,3 +16,11 @@ python -m bench.workflows
 ```
 
 完整单步矩阵为 4 × 6 × 5 × 5 × 30 = 18,000 Episode。故障强度是 episode 级选中概率，1% 档每格 30 次通常不足以形成可靠效果估计。现有结果只有科研工程探索意义。
+
+## 业务改名对照实验
+
+```bash
+python -m bench.identity_drift --repeats 1 --output results/identity_drift
+```
+
+对照 `b3_step`、`b3_business` 与 `raguard`，以真实物理效果验证重复风险、证据缺失时的停止比例和网络开销。此项为探索性实验，不应与原有单步 B0–B3 或多步骤 Saga 数据合并。

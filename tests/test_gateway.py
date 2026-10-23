@@ -29,6 +29,7 @@ class FakeUpstream:
         self.effects = {}
         self.executions = 0
         self.compensations = 0
+        self.readbacks = 0
         self.fail_after = fail_after
         self.cannot_read = cannot_read
         self.delay = delay
@@ -49,6 +50,7 @@ class FakeUpstream:
             return result
 
     def readback(self, call, policy):
+        self.readbacks += 1
         if self.cannot_read or not policy.readback:
             return None
         return self.effects.get(call.stable_key)
@@ -79,6 +81,20 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual((code, result["action"]), (200, "replay"))
         self.assertEqual(self.invoke(gateway, request())[0], 200)
         self.assertEqual(upstream.executions, 1)
+
+    def test_verified_idempotent_success_receipt_skips_extra_readback(self):
+        gateway, upstream = self.gateway()
+        status, body = self.invoke(gateway, request())
+        self.assertEqual((status, body['evidence']), (200, 'idempotent_ack'))
+        self.assertEqual(upstream.readbacks, 0)
+        self.assertEqual(upstream.executions, 1)
+
+    def test_non_idempotent_ticket_still_requires_positive_readback(self):
+        gateway, upstream = self.gateway()
+        ticket = request('tickets.create')
+        status, body = self.invoke(gateway, ticket)
+        self.assertEqual((status, body['evidence']), (200, 'positive_readback'))
+        self.assertEqual(upstream.readbacks, 1)
 
     def test_opaque_write_after_lost_response_never_retries(self):
         gateway, upstream = self.gateway(fail_after=True)

@@ -110,14 +110,15 @@ class Gateway:
         for index in range(attempts):
             try:
                 result = self.upstream.execute(call, policy)
-                if policy.readback:
+                if policy.authoritative_receipt and policy.effect == Effect.IDEMPOTENT:
+                    # 上游已核实返回稳定幂等键的成功回执，避免冗余 HTTP 回读。
+                    # 只有管理员登记此契约才能启用；超时/坏响应仍必须正向取证。
+                    evidence = 'idempotent_ack'
+                elif policy.readback:
                     confirmed = self.upstream.readback(call, policy)
                     if confirmed is not None:
                         result = confirmed
                         evidence = 'positive_readback'
-                    elif policy.authoritative_receipt and policy.effect == Effect.IDEMPOTENT:
-                        # 已核实的稳定幂等键服务，可以用同键成功回执确认证据。
-                        evidence = 'idempotent_ack'
                     else:
                         raise UncertainResult('正向回读不可用')
                 else:

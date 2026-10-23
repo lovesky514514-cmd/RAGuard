@@ -49,4 +49,6 @@ Windows x64 需要 Python 3.11+。内置经校验的 Go 沙箱可供普通演示
 
 项目按 [Apache License 2.0](LICENSE) 开源；署名 **SuKoYa**，联系邮箱 **[lovesky514514@gmail.com](mailto:lovesky514514@gmail.com)**。分发说明见 [NOTICE](NOTICE)。
 
-研究结果目前仅供探索，不代表 SCI 论文创新性已经得到验证。本仓库在公开前仍需完成隐私和自动化测试审批；**不会公开真实姓名、实体住址或个人电脑的绝对路径**。
+研究结果目前仅供探索，不代表 SCI 论文创新性已经得到验证。
+
+业务身份重规划与证据不可用的受控对照，可参考 [实验协议](docs/EXPERIMENTS.md)。
