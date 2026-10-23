@@ -51,6 +51,8 @@ python scripts/launcher.py start --self-test
 随仓库提供的 Windows 沙箱程序由 `mock/` 的 Go 代码构建，使用前仍需检查 SHA-256。
 发布前执行 `python scripts/check_public_release.py` 和 `python scripts/verify_manifest.py`。
 
+公开发行材料不填写个人姓名、联系邮箱或实体住址；Git 提交历史元数据另行审批。
+
 ## GitHub 源码与安全
 
 仓库不提交 `data/`、`logs/` 或本机生成的实验结果。`bin/raguard-mock.exe` 是本地 Windows x64 演示依赖，必须与同目录哈希文件一起保留。当前随仓库的 `results/reference_*` 是**探索性参考数据**，不是 Windows 用户本次生成的实验结果。

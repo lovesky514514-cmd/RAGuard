@@ -7,14 +7,23 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP = {'.git', '.venv', '__pycache__', '.pytest_cache', 'data', 'logs', 'results'}
-TEXT_EXT = {'.py', '.go', '.md', '.toml', '.bat', '.cmd', '.sh', '.json', '.yml', '.yaml'}
+SKIP = {'.git', '.venv', '__pycache__', '.pytest_cache', 'data', 'logs'}
+TEXT_EXT = {'.py', '.go', '.md', '.toml', '.bat', '.cmd', '.sh', '.json', '.yml', '.yaml', '.csv', '.txt', '.mod', '.rst', '.xml', '.html'}
 UNSAFE_NAMES = {'.env', 'id_rsa', 'id_ed25519', 'credentials.json', 'secrets.json'}
 UNSAFE_SUFFIX = {'.pem', '.key', '.p12', '.pfx', '.sqlite3', '.db', '.log'}
 SECRET_PATTERNS = (
     re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
     re.compile(r'\b(?:ghp_|github_pat_)[A-Za-z0-9_]{20,}'),
     re.compile(r'\bsk-[A-Za-z0-9_-]{30,}'),
+)
+
+
+# 只检测真实联系字段与带门牌的实体住址；网址、回环 IP 和协议示例不算实体地址。
+IDENTITY_PATTERNS = (
+    ('电子邮箱', re.compile(r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}', re.IGNORECASE)),
+    ('英文实体住址', re.compile(r'\b\d{1,6}\s+(?:[A-Za-z.]+\s+){1,5}(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd)\b', re.IGNORECASE)),
+    ('中文实体住址', re.compile(r'(?:省|市|区|县).{0,30}(?:路|街|巷).{0,20}\d{1,5}号')),
+    ('个人版权署名', re.compile(r'^\s*Copyright\s+\d{4}(?:-\d{4})?\s+\S+', re.MULTILINE | re.IGNORECASE)),
 )
 
 
@@ -51,6 +60,10 @@ def check() -> list[str]:
             errors.append(f'出现 Unicode 乱码替换字符：{relative}')
         if any(pattern.search(content) for pattern in SECRET_PATTERNS):
             errors.append(f'疑似私钥或密钥硬编码：{relative}')
+        if file.name != 'LICENSE':
+            for kind, pattern in IDENTITY_PATTERNS:
+                if pattern.search(content):
+                    errors.append(f'包含禁止发布的{kind}：{relative}')
 
     binary = ROOT / 'bin' / 'raguard-mock.exe'
     digest_file = ROOT / 'bin' / 'raguard-mock.exe.sha256'
