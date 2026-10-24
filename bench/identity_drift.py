@@ -9,6 +9,7 @@ import time
 import urllib.request
 
 from bench.analyze import write_csv
+from bench.durable_baseline import DurableBaseline
 from bench.oracle import EffectEvent, evaluate
 from bench.runner import BUSINESS_KEY, execute_baseline, local_sandbox, raw_call
 from raguard.gateway import Gateway
@@ -17,7 +18,7 @@ from raguard.ledger import Ledger
 from raguard.transport import SandboxClient
 from scripts.sandbox_binary import build_sandbox
 
-METHODS = ('b3_step', 'b3_business', 'raguard')
+METHODS = ('b3_step', 'b3_business', 'b5_durable', 'raguard')
 TOOLS = ('orders.create', 'tickets.create', 'notifications.send')
 FAULTS = ('none', 'after_disconnect', 'after_invalid_json')
 
@@ -65,6 +66,11 @@ def run_case(method: str, tool: str, fault: str, no_readback: bool,
             # 反事实加强：两次都使用相同外部业务身份，但不增添持久执行账本。
             first_status, _ = execute_baseline('b3', client, first)
             second_status, _ = execute_baseline('b3', client, first)
+        elif method == 'b5_durable':
+            with tempfile.TemporaryDirectory() as folder:
+                path = str(Path(folder) / 'durable.sqlite3')
+                first_status, _ = DurableBaseline(path, client).call(first, 'trusted-business')
+                second_status, _ = DurableBaseline(path, client).call(renamed, 'trusted-business')
         else:
             with tempfile.TemporaryDirectory() as folder:
                 ledger_file = str(Path(folder) / 'ledger.sqlite3')
@@ -109,8 +115,8 @@ def main() -> int:
     lines = ['# 业务改名实验（探索性）', '',
              '同一业务只应有一次物理副作用；两个请求使用相同参数，第二次改变任务/步骤名。',
              '每组使用隔离的 Go 沙箱，故障只注入首个请求；同条件各方法严格配对。',
-             'b3_step：步骤级稳定键；b3_business：业务级稳定键，但无持久执行账本。',
-             'RAGuard：持久业务绑定 + 账本；B3 不是完整商业系统复现，不能据此宣称普适优势。', '',
+             'b3_step：步骤级稳定键；b3_business：业务级稳定键但无持久执行账本；b5_durable：独立等能力强基线。',
+             'RAGuard：持久业务绑定 + 账本；B5 独立具备身份绑定、写前日志和安全停止，用于检验是否存在独立优势。', '',
              '| 方法 | 样本 | 重复副作用 | 安全停止（第二次） |',
              '|---|---:|---:|---:|']
     for method in METHODS:
