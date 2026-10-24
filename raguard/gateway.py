@@ -25,7 +25,8 @@ class Gateway:
                  lease_seconds: float = 5.0,
                  *, identities: BusinessIntentRegistry | None = None,
                  receipt_ttl_seconds: float = 300.0,
-                 retry_budget: RetryBudget | None = None):
+                 retry_budget: RetryBudget | None = None,
+                 coalesce_failed_readback: bool = True):
         if lease_seconds < 0 or receipt_ttl_seconds < 0:
             raise ValueError('租约与回执有效期不能小于零')
         self.ledger = ledger
@@ -33,7 +34,10 @@ class Gateway:
         self.lease_seconds = lease_seconds
         self.identities = identities
         self.receipt_ttl_seconds = receipt_ttl_seconds
+        if not isinstance(coalesce_failed_readback, bool):
+            raise ValueError('回读合并标记必须为布尔值')
         self.retry_budget = retry_budget or RetryBudget()
+        self.coalesce_failed_readback = coalesce_failed_readback
 
     def _identified(self, call: Call, identity: VerifiedIdentity | None,
                     *, allow_new: bool = True) -> Call:
@@ -108,6 +112,7 @@ class Gateway:
                  generation: int) -> tuple[int, dict]:
         attempts = self.retry_budget.attempts if policy.retryable else 1
         for index in range(attempts):
+            readback_attempted = False
             try:
                 result = self.upstream.execute(call, policy)
                 if policy.authoritative_receipt and policy.effect == Effect.IDEMPOTENT:
@@ -115,6 +120,8 @@ class Gateway:
                     # 只有管理员登记此契约才能启用；超时/坏响应仍必须正向取证。
                     evidence = 'idempotent_ack'
                 elif policy.readback:
+                    # 同一执行尝试最多做一次事后回读；失败不表示未提交。
+                    readback_attempted = True
                     confirmed = self.upstream.readback(call, policy)
                     if confirmed is not None:
                         result = confirmed
@@ -128,10 +135,13 @@ class Gateway:
                                       'confirmed', result=result, evidence=evidence)
                 return self._current(call)
             except UncertainResult:
-                verified = self.upstream.readback(call, policy)
-                if verified is not None and self.ledger.reconcile(call, verified):
-                    return 200, reply('replay', 'confirmed', result=verified,
-                                      evidence='positive_readback')
+                # execute 结果不明时必须尝试回读；若刚刚读过且没有可信结果，
+                # 不立刻发起一次等价的重复读。延迟证据应由后续恢复调用重查。
+                if not readback_attempted or not self.coalesce_failed_readback:
+                    verified = self.upstream.readback(call, policy)
+                    if verified is not None and self.ledger.reconcile(call, verified):
+                        return 200, reply('replay', 'confirmed', result=verified,
+                                          evidence='positive_readback')
                 if index + 1 < attempts:
                     time.sleep(self.retry_budget.delay(index))
         self.ledger.complete(call, generation, 'unknown', None, 'uncertain_commit')

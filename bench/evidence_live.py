@@ -22,7 +22,7 @@ from raguard.ledger import Ledger
 from raguard.provider_evidence import LocalEvidenceClient
 from scripts.sandbox_binary import ROOT
 
-METHODS = ('b5_durable', 'raguard')
+METHODS = ('b5_durable', 'raguard_uncoalesced', 'raguard')
 TOOLS = ('orders.create', 'tickets.create')
 FAULTS = ('none', 'after_disconnect')
 EVIDENCE_MODES = ('normal', 'wrong_business', 'wrong_epoch',
@@ -69,14 +69,18 @@ def run_case(method: str, tool: str, fault: str, evidence_mode: str,
                 first, _ = DurableBaseline(db, client).call(raw, 'verified-operation')
                 second, _ = DurableBaseline(db, client).call(raw, 'verified-operation')
             else:
+                # 同一个 Gateway 的开关消融对照，除回读合并外条件完全一致。
+                coalesce = method != 'raguard_uncoalesced'
                 ledger = directory / 'ledger.sqlite3'
                 registry = directory / 'identity.sqlite3'
                 identity = VerifiedIdentity('verified-operation')
                 first, _ = Gateway(Ledger(str(ledger)), client,
-                                   identities=BusinessIntentRegistry(str(registry))).call(
+                                   identities=BusinessIntentRegistry(str(registry)),
+                                   coalesce_failed_readback=coalesce).call(
                                        raw, identity=identity)
                 second, _ = Gateway(Ledger(str(ledger)), client,
-                                    identities=BusinessIntentRegistry(str(registry))).call(
+                                    identities=BusinessIntentRegistry(str(registry)),
+                                   coalesce_failed_readback=coalesce).call(
                                         raw, identity=identity)
         elapsed = (time.perf_counter() - start) * 1000
         with urllib.request.urlopen(origin + '/v1/lab/effects', timeout=2) as answer:

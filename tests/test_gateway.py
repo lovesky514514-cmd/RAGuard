@@ -112,6 +112,30 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.invoke(gateway, request())[0], 200)
         self.assertEqual(upstream.executions, 1)
 
+    def test_negative_readback_checked_once_per_attempt(self):
+        class CountingUpstream(FakeUpstream):
+            def __init__(self):
+                super().__init__(cannot_read=True)
+                self.queries = 0
+
+            def readback(self, call, policy):
+                self.queries += 1
+                return super().readback(call, policy)
+
+        raw = request('tickets.create')
+        for coalesce, expected in ((False, 2), (True, 1)):
+            with self.subTest(coalesce=coalesce), tempfile.TemporaryDirectory() as work:
+                upstream = CountingUpstream()
+                gateway = Gateway(
+                    Ledger(str(Path(work) / 'ledger.db')), upstream,
+                    identities=BusinessIntentRegistry(str(Path(work) / 'identity.db')),
+                    coalesce_failed_readback=coalesce,
+                )
+                status, _ = gateway.call(raw, identity=trusted(raw))
+                self.assertEqual(status, 409)
+                self.assertEqual(upstream.executions, 1)
+                self.assertEqual(upstream.queries, expected)
+
     def test_intent_changes_are_not_merged(self):
         gateway, upstream = self.gateway()
         self.assertEqual(self.invoke(gateway, request())[0], 200)

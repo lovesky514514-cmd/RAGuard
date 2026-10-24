@@ -50,6 +50,23 @@ class EvidenceLiveTests(unittest.TestCase):
                 self.assertEqual(row.resume_status, 409)
                 self.assertEqual(row.unsafe, 0)
 
+    def test_uncoalesced_and_coalesced_have_equal_safety(self):
+        for mode in ('normal', 'wrong_business', 'wrong_epoch', 'stale'):
+            with self.subTest(mode=mode):
+                before = self.check('raguard_uncoalesced', mode=mode)
+                after = self.check('raguard', mode=mode)
+                self.assertEqual((before.physical_goal, before.unsafe,
+                                  before.false_confirmation, before.unresolved),
+                                 (after.physical_goal, after.unsafe,
+                                  after.false_confirmation, after.unresolved))
+                self.assertLessEqual(after.readbacks, before.readbacks)
+
+    def test_invalid_evidence_coalesces_immediate_negative_readback(self):
+        before = self.check('raguard_uncoalesced', fault='none', mode='wrong_business')
+        after = self.check('raguard', fault='none', mode='wrong_business')
+        self.assertGreater(before.readbacks, after.readbacks)
+        self.assertEqual((before.unsafe, after.unsafe), (0, 0))
+
     def test_fair_pair_same_live_outcome(self):
         for tool in ('orders.create', 'tickets.create'):
             for mode in ('normal', 'wrong_business'):
