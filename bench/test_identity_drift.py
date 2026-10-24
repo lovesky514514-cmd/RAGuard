@@ -17,7 +17,7 @@ class IdentityDriftUnitTests(unittest.TestCase):
         self.assertEqual(original['tool'], changed['tool'])
         self.assertNotEqual(original['step'], changed['step'])
         self.assertNotEqual(original['task'], changed['task'])
-        self.assertEqual(len(METHODS), 3)
+        self.assertEqual(len(METHODS), 4)
 
 
 @unittest.skipUnless(sandbox_available(), '需要 Go 或 Windows 内置沙箱')
@@ -53,6 +53,18 @@ class IdentityDriftGoTests(unittest.TestCase):
         self.assertEqual(baseline.unsafe, 1)
         self.assertEqual((system.unsafe, system.renamed_status), (0, 409))
         self.assertEqual(system.physical_goal, 1)
+
+    def test_equal_capability_b5_stops_on_unknown(self):
+        baseline = self.case('b5_durable', 'tickets.create', 'after_disconnect', True)
+        system = self.case('raguard', 'tickets.create', 'after_disconnect', True)
+        self.assertEqual((baseline.unsafe, system.unsafe), (0, 0))
+        self.assertEqual((baseline.renamed_status, system.renamed_status), (409, 409))
+
+    def test_equal_capability_b5_recovers_with_evidence(self):
+        baseline = self.case('b5_durable', 'tickets.create', 'after_disconnect')
+        system = self.case('raguard', 'tickets.create', 'after_disconnect')
+        self.assertEqual((baseline.unsafe, system.unsafe), (0, 0))
+        self.assertEqual((baseline.renamed_status, system.renamed_status), (200, 200))
 
     def test_native_idempotency_handles_ambiguous_commit_without_readback(self):
         strong = self.case('b3_business', 'orders.create', 'after_disconnect', True)
