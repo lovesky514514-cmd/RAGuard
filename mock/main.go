@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,15 +34,16 @@ type effect struct {
 }
 
 type sandbox struct {
-	mu           sync.Mutex
-	effects      map[string][]effect
-	commits      map[string]int
-	fault        string
-	faultFired   bool
-	noReadback   bool
-	attempts     int
-	readbacks    int
-	evidenceMode string
+	mu                 sync.Mutex
+	effects            map[string][]effect
+	commits            map[string]int
+	fault              string
+	faultFired         bool
+	noReadback         bool
+	attempts           int
+	readbacks          int
+	evidenceMode       string
+	evidenceDelayReads int
 }
 
 func newSandbox(fault string, noReadback bool, evidenceMode ...string) *sandbox {
@@ -228,6 +230,10 @@ func (s *sandbox) readback(w http.ResponseWriter, r *http.Request) {
 		respond(w, 503, map[string]string{"status": "unavailable"})
 		return
 	}
+	if s.readbacks <= s.evidenceDelayReads {
+		respond(w, 200, map[string]string{"status": "unknown"})
+		return
+	}
 	records := s.effects[tool+":"+intent]
 	if len(records) != 1 || records[0].Cancelled {
 		respond(w, 200, map[string]string{"status": "unknown"})
@@ -348,7 +354,19 @@ func main() {
 	if !strings.HasPrefix(address, "127.0.0.1:") {
 		log.Fatal("mock only supports loopback address")
 	}
+	delay := 0
+	if configured := os.Getenv("MOCK_EVIDENCE_DELAY_READS"); configured != "" {
+		var err error
+		delay, err = strconv.Atoi(configured)
+		if err != nil || delay < 0 || delay > 20 {
+			log.Fatal("invalid evidence delay read count")
+		}
+	}
 	log.Printf("sandbox at %s", address)
 	log.Fatal(http.ListenAndServe(address,
-		newSandbox(os.Getenv("MOCK_FAULT_ONCE"), os.Getenv("MOCK_DISABLE_READBACK") == "1", os.Getenv("MOCK_EVIDENCE_MODE")).routes()))
+		func() http.Handler {
+			s := newSandbox(os.Getenv("MOCK_FAULT_ONCE"), os.Getenv("MOCK_DISABLE_READBACK") == "1", os.Getenv("MOCK_EVIDENCE_MODE"))
+			s.evidenceDelayReads = delay
+			return s.routes()
+		}()))
 }

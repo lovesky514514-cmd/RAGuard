@@ -30,11 +30,13 @@ class LocalEvidenceClient(SandboxClient):
         self.admitted = 0
         self.rejected = 0
         self.queries = 0
+        self.last_evidence_state = "unknown"
 
     def readback(self, call: Call, policy: ToolPolicy) -> dict | None:
         if not policy.readback:
             return None
         self.queries += 1
+        self.last_evidence_state = "pending"
         query = urllib.parse.urlencode({'tool_id': call.tool,
                                         'intent_key': call.stable_key})
         try:
@@ -42,7 +44,11 @@ class LocalEvidenceClient(SandboxClient):
         except UncertainResult:
             self.rejected += 1
             return None
-        if body.get('status') != 'confirmed' or body.get('intent_key') != call.stable_key:
+        if body.get('status') != 'confirmed':
+            self.rejected += 1
+            return None
+        if body.get('intent_key') != call.stable_key:
+            self.last_evidence_state = 'contract_violation'
             self.rejected += 1
             return None
         if not isinstance(body.get('result'), dict):
@@ -66,6 +72,15 @@ class LocalEvidenceClient(SandboxClient):
             payload_digest=call.fingerprint, authority=self.AUTHORITY,
             authority_epoch=self.EPOCH, max_age_seconds=self.max_age_seconds,
             min_version=1)
+        # 错误的业务主体、指纹或权威代次表示此回执不能用于当前操作。
+        # 在当前恢复窗口中停止轮询；未来合法请求仍可重新发起查询。
+        if (body['tool_id'] != contract.tool or body['business_key'] != contract.business_ref
+                or body['fingerprint'] != contract.payload_digest
+                or body['authority'] != contract.authority
+                or body['authority_epoch'] != contract.authority_epoch):
+            self.last_evidence_state = 'contract_violation'
+            self.rejected += 1
+            return None
         observation = EvidenceObservation(
             tool=body['tool_id'], business_ref=body['business_key'],
             payload_digest=body['fingerprint'], authority=body['authority'],
@@ -80,5 +95,6 @@ class LocalEvidenceClient(SandboxClient):
         if result.decision != EvidenceDecision.CONFIRMED:
             self.rejected += 1
             return None
+        self.last_evidence_state = 'confirmed'
         self.admitted += 1
         return body['result']
