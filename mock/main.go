@@ -31,6 +31,7 @@ type effect struct {
 	BusinessKey string
 	Result      map[string]any
 	Cancelled   bool
+	CommittedAt time.Time
 }
 
 type sandbox struct {
@@ -44,6 +45,7 @@ type sandbox struct {
 	readbacks          int
 	evidenceMode       string
 	evidenceDelayReads int
+	evidenceDelayTime  time.Duration
 }
 
 func newSandbox(fault string, noReadback bool, evidenceMode ...string) *sandbox {
@@ -204,6 +206,7 @@ func (s *sandbox) execute(w http.ResponseWriter, r *http.Request) {
 		s.effects[key] = append(s.effects[key], effect{
 			ID:          fmt.Sprintf("effect-%04d", s.commits[call.Tool]),
 			Fingerprint: call.Fingerprint, BusinessKey: businessKey(call), Result: result,
+			CommittedAt: time.Now(),
 		})
 	}
 	// 提交后断连用于复现“外部已执行、调用方未知”的核心故障。
@@ -236,6 +239,11 @@ func (s *sandbox) readback(w http.ResponseWriter, r *http.Request) {
 	}
 	records := s.effects[tool+":"+intent]
 	if len(records) != 1 || records[0].Cancelled {
+		respond(w, 200, map[string]string{"status": "unknown"})
+		return
+	}
+	// 用墙钟时间注入最终证据延迟，不改变实际提交时间或效果真值。
+	if time.Since(records[0].CommittedAt) < s.evidenceDelayTime {
 		respond(w, 200, map[string]string{"status": "unknown"})
 		return
 	}
@@ -362,11 +370,20 @@ func main() {
 			log.Fatal("invalid evidence delay read count")
 		}
 	}
+	delayMS := 0
+	if configured := os.Getenv("MOCK_EVIDENCE_DELAY_MS"); configured != "" {
+		var err error
+		delayMS, err = strconv.Atoi(configured)
+		if err != nil || delayMS < 0 || delayMS > 2000 {
+			log.Fatal("invalid evidence delay milliseconds")
+		}
+	}
 	log.Printf("sandbox at %s", address)
 	log.Fatal(http.ListenAndServe(address,
 		func() http.Handler {
 			s := newSandbox(os.Getenv("MOCK_FAULT_ONCE"), os.Getenv("MOCK_DISABLE_READBACK") == "1", os.Getenv("MOCK_EVIDENCE_MODE"))
 			s.evidenceDelayReads = delay
+			s.evidenceDelayTime = time.Duration(delayMS) * time.Millisecond
 			return s.routes()
 		}()))
 }

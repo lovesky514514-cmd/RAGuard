@@ -124,8 +124,11 @@ def execute_baseline(method: str, client: SandboxClient, raw: dict) -> tuple[int
 
 @contextmanager
 def local_sandbox(binary: Path, fault: str, no_readback: bool,
-                  evidence_mode: str = "normal", evidence_delay_reads: int = 0):
+                  evidence_mode: str = "normal", evidence_delay_reads: int = 0,
+                  evidence_delay_ms: int = 0):
     """每组试验启用全新 Go 进程，避免上一组世界状态污染。"""
+    if type(evidence_delay_ms) is not int or not 0 <= evidence_delay_ms <= 2000:
+        raise ValueError('证据延迟毫秒数必须在 0 到 2000 之间')
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
@@ -134,7 +137,8 @@ def local_sandbox(binary: Path, fault: str, no_readback: bool,
         'MOCK_ADDR': f'127.0.0.1:{port}', 'MOCK_FAULT_ONCE': fault,
         'MOCK_DISABLE_READBACK': '1' if no_readback else '0',
         'MOCK_EVIDENCE_MODE': evidence_mode,
-        'MOCK_EVIDENCE_DELAY_READS': str(evidence_delay_reads)},
+        'MOCK_EVIDENCE_DELAY_READS': str(evidence_delay_reads),
+        'MOCK_EVIDENCE_DELAY_MS': str(evidence_delay_ms)},
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
         for _ in range(100):

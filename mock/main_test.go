@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func post(t *testing.T, origin, raw string) int {
@@ -164,5 +165,45 @@ func TestIdempotentConflictCannotRebindBusinessKey(t *testing.T) {
 	two := strings.Replace(one, `"order:one"`, `"order:two"`, 1)
 	if post(t, server.URL, two) != 409 {
 		t.Fatal("same idempotency key cannot be rebound to different operation")
+	}
+}
+
+// 同一真实副作用的证据可见时间与业务提交时间分离。
+// 测试直接调整内部提交时间，不依赖操作系统调度或实际 sleep。
+func TestEvidenceVisibilityUsesElapsedTime(t *testing.T) {
+	s := newSandbox("", false)
+	s.evidenceDelayTime = time.Second
+	server := httptest.NewServer(s.routes())
+	defer server.Close()
+	raw := `{"tool_id":"tickets.create","intent_key":"time","fingerprint":"f","args":{"message":"hi"}}`
+	if post(t, server.URL, raw) != 200 {
+		t.Fatal("effect write failed")
+	}
+	query := func() string {
+		t.Helper()
+		r, err := http.Get(server.URL + "/v1/effects?tool_id=tickets.create&intent_key=time")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var response map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		return response["status"].(string)
+	}
+	if state := query(); state != "unknown" {
+		t.Fatalf("early evidence must remain hidden: %s", state)
+	}
+	s.mu.Lock()
+	item := s.effects["tickets.create:time"][0]
+	item.CommittedAt = time.Now().Add(-2 * time.Second)
+	s.effects["tickets.create:time"][0] = item
+	s.mu.Unlock()
+	if state := query(); state != "confirmed" {
+		t.Fatalf("mature evidence must be visible: %s", state)
+	}
+	if s.commits["tickets.create"] != 1 {
+		t.Fatal("readback modified external effect count")
 	}
 }
