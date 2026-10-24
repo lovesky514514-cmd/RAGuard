@@ -123,7 +123,8 @@ def execute_baseline(method: str, client: SandboxClient, raw: dict) -> tuple[int
 
 
 @contextmanager
-def local_sandbox(binary: Path, fault: str, no_readback: bool):
+def local_sandbox(binary: Path, fault: str, no_readback: bool,
+                  evidence_mode: str = "normal"):
     """每组试验启用全新 Go 进程，避免上一组世界状态污染。"""
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
@@ -131,7 +132,8 @@ def local_sandbox(binary: Path, fault: str, no_readback: bool):
     origin = f'http://127.0.0.1:{port}'
     proc = subprocess.Popen([str(binary)], env={**os.environ,
         'MOCK_ADDR': f'127.0.0.1:{port}', 'MOCK_FAULT_ONCE': fault,
-        'MOCK_DISABLE_READBACK': '1' if no_readback else '0'},
+        'MOCK_DISABLE_READBACK': '1' if no_readback else '0',
+        'MOCK_EVIDENCE_MODE': evidence_mode},
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
         for _ in range(100):

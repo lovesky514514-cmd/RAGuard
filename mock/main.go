@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 type request struct {
@@ -32,20 +33,25 @@ type effect struct {
 }
 
 type sandbox struct {
-	mu         sync.Mutex
-	effects    map[string][]effect
-	commits    map[string]int
-	fault      string
-	faultFired bool
-	noReadback bool
-	attempts   int
-	readbacks  int
+	mu           sync.Mutex
+	effects      map[string][]effect
+	commits      map[string]int
+	fault        string
+	faultFired   bool
+	noReadback   bool
+	attempts     int
+	readbacks    int
+	evidenceMode string
 }
 
-func newSandbox(fault string, noReadback bool) *sandbox {
+func newSandbox(fault string, noReadback bool, evidenceMode ...string) *sandbox {
+	mode := "normal"
+	if len(evidenceMode) > 0 {
+		mode = evidenceMode[0]
+	}
 	return &sandbox{
 		effects: make(map[string][]effect), commits: make(map[string]int),
-		fault: fault, noReadback: noReadback,
+		fault: fault, noReadback: noReadback, evidenceMode: mode,
 	}
 }
 
@@ -227,10 +233,29 @@ func (s *sandbox) readback(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]string{"status": "unknown"})
 		return
 	}
-	respond(w, 200, map[string]any{
-		"status": "confirmed", "intent_key": intent,
-		"fingerprint": records[0].Fingerprint, "result": records[0].Result,
-	})
+	proof := map[string]any{
+		"status": "confirmed", "intent_key": intent, "tool_id": tool,
+		"fingerprint":  records[0].Fingerprint,
+		"business_key": records[0].BusinessKey,
+		"effect_id":    records[0].ID,
+		"authority":    "local-go-sandbox", "authority_epoch": 1,
+		"version": 1, "observed_at": float64(time.Now().UnixNano()) / 1e9,
+		"final": true, "result": records[0].Result,
+	}
+	// 错误证据只改变回读元数据，不改变独立的真实效果历史。
+	switch s.evidenceMode {
+	case "wrong_business":
+		proof["business_key"] = "foreign-business"
+	case "wrong_epoch":
+		proof["authority_epoch"] = 9
+	case "wrong_digest":
+		proof["fingerprint"] = "foreign-payload"
+	case "stale":
+		proof["observed_at"] = float64(time.Now().Add(-time.Hour).UnixNano()) / 1e9
+	case "not_final":
+		proof["final"] = false
+	}
+	respond(w, 200, proof)
 }
 
 func (s *sandbox) compensate(w http.ResponseWriter, r *http.Request) {
@@ -325,5 +350,5 @@ func main() {
 	}
 	log.Printf("sandbox at %s", address)
 	log.Fatal(http.ListenAndServe(address,
-		newSandbox(os.Getenv("MOCK_FAULT_ONCE"), os.Getenv("MOCK_DISABLE_READBACK") == "1").routes()))
+		newSandbox(os.Getenv("MOCK_FAULT_ONCE"), os.Getenv("MOCK_DISABLE_READBACK") == "1", os.Getenv("MOCK_EVIDENCE_MODE")).routes()))
 }
