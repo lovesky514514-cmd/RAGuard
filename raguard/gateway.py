@@ -2,6 +2,7 @@
 
 import time
 
+from .handoff import OwnerTermination
 from .identity import BusinessIntentRegistry, IdentityConflict, VerifiedIdentity
 from .ledger import Conflict, Ledger
 from .model import BadCall, Call
@@ -26,7 +27,8 @@ class Gateway:
                  *, identities: BusinessIntentRegistry | None = None,
                  receipt_ttl_seconds: float = 300.0,
                  retry_budget: RetryBudget | None = None,
-                 coalesce_failed_readback: bool = True):
+                 coalesce_failed_readback: bool = True,
+                 owner_termination: OwnerTermination | None = None):
         if lease_seconds < 0 or receipt_ttl_seconds < 0:
             raise ValueError('租约与回执有效期不能小于零')
         self.ledger = ledger
@@ -36,6 +38,9 @@ class Gateway:
         self.receipt_ttl_seconds = receipt_ttl_seconds
         if not isinstance(coalesce_failed_readback, bool):
             raise ValueError('回读合并标记必须为布尔值')
+        if owner_termination is not None and not isinstance(owner_termination, OwnerTermination):
+            raise ValueError('终止凭证类型不合法')
+        self.owner_termination = owner_termination
         self.retry_budget = retry_budget or RetryBudget()
         self.coalesce_failed_readback = coalesce_failed_readback
 
@@ -76,13 +81,20 @@ class Gateway:
             if verified is not None and self.ledger.reconcile(call, verified):
                 return 200, reply('replay', 'confirmed', result=verified,
                                   evidence='positive_readback')
-            if record.state == 'in_flight' and time.time() - record.updated < self.lease_seconds:
+            # 监督器仅可接管被确认终止的那一代；新执行者不继承旧凭证。
+            # 必须同时满足服务端原生幂等契约，非幂等写入永不据此重发。
+            witnessed = (self.owner_termination is not None
+                         and policy.effect == Effect.IDEMPOTENT
+                         and policy.authoritative_receipt
+                         and self.owner_termination.covers(call, record))
+            effective_lease = 0.0 if witnessed else self.lease_seconds
+            if record.state == 'in_flight' and time.time() - record.updated < effective_lease:
                 return 202, reply('wait', 'in_flight', reason='原调用尚未确认')
             if not policy.retryable:
                 self.ledger.mark_stale(call, record.generation)
                 return 409, reply('stop', 'unknown', reason='可能已写入，禁止重复调用')
             generation = self.ledger.retry_claim(call, record.generation,
-                                                 self.lease_seconds)
+                                                 effective_lease)
             if generation is None:
                 return 202, reply('wait', 'in_flight', reason='另一请求已取得执行权')
             return self._execute(call, policy, generation)

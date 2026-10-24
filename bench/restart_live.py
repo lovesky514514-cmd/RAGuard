@@ -22,6 +22,7 @@ from bench.durable_baseline import DurableBaseline
 from bench.oracle import EffectEvent, evaluate
 from bench.runner import BUSINESS_KEY, local_sandbox, raw_call
 from raguard.gateway import Gateway
+from raguard.handoff import OwnerTermination
 from raguard.identity import BusinessIntentRegistry, VerifiedIdentity
 from raguard.ledger import Ledger
 from raguard.model import Call
@@ -58,24 +59,26 @@ class Episode:
 
 
 def _engine(method: str, workspace: Path, client: LocalEvidenceClient,
-            *, owner_exit_observed: bool = False):
+            *, termination: OwnerTermination | None = None):
     if method == 'b5_durable':
+        # 强基线原本就支持稳定幂等键安全续执行，不应人为放慢。
         return DurableBaseline(workspace / 'durable.sqlite3', client)
     if method == 'raguard':
         return Gateway(Ledger(str(workspace / 'ledger.sqlite3')), client,
-                       # 提前交接只在测试驱动确实 wait() 到旧工作者死亡后允许。
-                       lease_seconds=0 if owner_exit_observed else 5,
-                       identities=BusinessIntentRegistry(str(workspace / 'identity.sqlite3')))
+                       identities=BusinessIntentRegistry(str(workspace / 'identity.sqlite3')),
+                       owner_termination=termination)
     raise ValueError('未知方法')
 
-
 def worker(method: str, tool: str, point: str, origin: str,
-           workspace: Path, *, owner_exit_observed: bool = False) -> int:
+           workspace: Path, *, dead_generation: int = 0, dead_exit_code: int = 0) -> int:
     """只由独立 Python 进程调用；强制退出不会运行对象析构逻辑。"""
     client = LocalEvidenceClient(origin, research_business_key=BUSINESS_KEY)
     raw = raw_call(tool)
-    engine = _engine(method, workspace, client,
-                     owner_exit_observed=owner_exit_observed)
+    call = Call.parse(raw)
+    termination = (OwnerTermination(call.tenant, call.task, call.intent,
+                                    call.fingerprint, dead_generation, dead_exit_code)
+                   if dead_generation else None)
+    engine = _engine(method, workspace, client, termination=termination)
     if point == 'resume':
         if method == 'b5_durable':
             status, _ = engine.call(raw, BUSINESS_REF)
@@ -84,7 +87,6 @@ def worker(method: str, tool: str, point: str, origin: str,
         print(json.dumps({'status': status}))
         return 0
 
-    call = Call.parse(raw)
     if method == 'b5_durable':
         original, _state, _last, is_new = engine._claim(call, BUSINESS_REF)
         if not is_new:
@@ -105,11 +107,12 @@ def worker(method: str, tool: str, point: str, origin: str,
 
 
 def _command(method: str, tool: str, point: str, origin: str, work: Path,
-             owner_exit_observed: bool = False) -> list[str]:
+             dead_generation: int = 0, dead_exit_code: int = 0) -> list[str]:
     cmd = [sys.executable, '-m', 'bench.restart_live', 'worker',
             '--method', method, '--tool', tool, '--point', point,
             '--origin', origin, '--workspace', str(work)]
-    return cmd + (['--owner-exit-observed'] if owner_exit_observed else [])
+    return cmd + (['--dead-generation', str(dead_generation),
+                   '--dead-exit-code', str(dead_exit_code)] if dead_generation else [])
 
 
 def _launch(command: list[str]) -> subprocess.Popen:
@@ -134,9 +137,12 @@ def run_case(method: str, tool: str, point: str, no_readback: bool,
         if first.returncode != expected_exit:
             raise RuntimeError(f'崩溃注入未到达预期阶段：{first.returncode}')
 
+        # 父监督器已 wait() 确认旧进程退出，才签发仅限旧执行代次的实验凭证。
+        generation = 1 if recovery_policy == 'dead_owner' else 0
+        exit_code = first.returncode if generation else 0
         # 真正启动多个新的 Python 解释器，共享同一持久数据库和沙箱。
         processes = [_launch(_command(method, tool, 'resume', origin, work,
-                                      owner_exit_observed=recovery_policy == 'dead_owner'))
+                                      dead_generation=generation, dead_exit_code=exit_code))
                      for _ in range(contenders)]
         statuses = []
         for proc in processes:
@@ -148,7 +154,7 @@ def run_case(method: str, tool: str, point: str, no_readback: bool,
         # 并发窗口结束后再发一个只读/恢复请求，区分暂时 202 和永久未完成。
         final = subprocess.run(
             _command(method, tool, 'resume', origin, work,
-                     owner_exit_observed=recovery_policy == 'dead_owner'),
+                     dead_generation=generation, dead_exit_code=exit_code),
             cwd=ROOT, capture_output=True, text=True, timeout=15, check=True,
         )
         final_status = json.loads(final.stdout)['status']
@@ -188,8 +194,7 @@ def matrix(binary: Path) -> list[Episode]:
     return [run_case(method, tool, point, unreadable, 3, binary,
                      recovery_policy=policy)
             for method in METHODS
-            for policy in (('standard',) if method == 'b5_durable'
-                           else ('standard', 'dead_owner'))
+            for policy in ('standard', 'dead_owner')
             for tool, point, unreadable in scenarios]
 
 
@@ -212,14 +217,16 @@ def main() -> int:
     parser.add_argument('--point', choices=('before', 'after', 'resume'))
     parser.add_argument('--origin')
     parser.add_argument('--workspace', type=Path)
-    parser.add_argument('--owner-exit-observed', action='store_true')
+    parser.add_argument('--dead-generation', type=int, default=0)
+    parser.add_argument('--dead-exit-code', type=int, default=0)
     parser.add_argument('--output', type=Path, default=Path('results/restart_live'))
     args = parser.parse_args()
     if args.command == 'worker':
         if not all((args.method, args.tool, args.point, args.origin, args.workspace)):
             parser.error('worker 缺少必要的执行条件')
         return worker(args.method, args.tool, args.point, args.origin, args.workspace,
-                      owner_exit_observed=args.owner_exit_observed)
+                      dead_generation=args.dead_generation,
+                      dead_exit_code=args.dead_exit_code)
     with tempfile.TemporaryDirectory() as temp:
         outcomes = matrix(build_binary(Path(temp)))
     args.output.mkdir(parents=True, exist_ok=True)
@@ -237,8 +244,7 @@ def main() -> int:
         '| --- | --- | ---: | ---: | ---: | ---: | ---: |',
     ]
     for method in METHODS:
-        for policy in (('standard',) if method == 'b5_durable'
-                       else ('standard', 'dead_owner')):
+        for policy in ('standard', 'dead_owner'):
             rows = [r for r in outcomes if r.method == method and r.recovery_policy == policy]
             report.append(f'| {method} | {policy} | {len(rows)} | '
                           f'{sum(r.unsafe for r in rows)} | '
