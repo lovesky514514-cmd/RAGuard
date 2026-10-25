@@ -32,6 +32,7 @@ jobs:
           python -m bench.evidence_parity --output results/evidence_parity_ci
           python -m bench.evidence_live --output results/evidence_live_ci
           python -m bench.temporal_live --output results/temporal_live_ci
+          python -m bench.scheduler_pilot --output results/scheduler_pilot_ci
           python -m bench.restart_live --output results/restart_live_ci
           cd mock
           go test ./...
