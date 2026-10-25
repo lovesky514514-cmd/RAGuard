@@ -1,0 +1,5 @@
+method,admission,cases,acknowledged,duplicates,wrong_scope,unsafe_confirmation,unresolved,network_attempts
+b5,unaware,12,4,5,6,8,0,24
+b5,contract,14,2,0,0,0,12,16
+raguard,unaware,12,4,5,6,8,0,24
+raguard,contract,14,2,0,0,0,12,16

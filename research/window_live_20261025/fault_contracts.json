@@ -1,0 +1,30 @@
+{
+  "research_type": "matched_real_HTTP_Go_loopback_v1",
+  "truth_separation": "/v1/lab/effects read exclusively after recovery, not by clients",
+  "server_tick_is_simulated": true,
+  "ttl_ticks": 4,
+  "admission_assumes_no_inflight_originals": true,
+  "original_scope": "region-a",
+  "fault_modes": [
+    "after_commit",
+    "before_commit"
+  ],
+  "recovery_ticks": [
+    2,
+    4,
+    6
+  ],
+  "scope_modes": [
+    "same",
+    "moved"
+  ],
+  "admission_modes": [
+    "unaware",
+    "contract"
+  ],
+  "contract_info": "same for actual B5 DurableBaseline and RAGuard Gateway",
+  "unknown_minimum_retention_additional_conditions": 2,
+  "no_external_API": true,
+  "no_production_gateway_changes": true,
+  "non_generalizable_observation": "zero observed in a deterministic safety subset is not a probabilistic guarantee"
+}

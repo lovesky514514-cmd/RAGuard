@@ -71,7 +71,7 @@ func replyJSON(w http.ResponseWriter, code int, payload any) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/v1/lab/effects" && r.Method == http.MethodGet {
 		s.mu.Lock()
-		copyEffects := append([]Effect(nil), s.effects...)
+		copyEffects := append([]Effect{}, s.effects...)
 		snap := Snapshot{Attempts: s.attempts, Effects: copyEffects}
 		s.mu.Unlock()
 		replyJSON(w, http.StatusOK, snap)

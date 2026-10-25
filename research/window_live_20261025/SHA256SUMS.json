@@ -1,0 +1,11 @@
+{
+  "bench/window_live.py": "bbd15626032799cdf32efe24be115a580a4e2b3b40331a1108a90ee8e2bece1b",
+  "bench/test_window_live.py": "7c6cf7e2de7add0349e62f1f6dca64092d4696d5ca97c7609ca438bdc022f50e",
+  "mock/windowlab/windowlab.go": "905bcf05f552f3031eeaa7b7314b8a865301abdeaf875402e8c5fd2946728046",
+  "mock/windowlab/cmd/windowlab/main.go": "004c2e6ec4e06d11f2d21d3248c7146ceddbdb95414d80260b232fcea73929d9",
+  "research/window_live_20261025/episodes.csv": "8b259c5ed56d1a70b353a79b409ea48cb9d6f66501b8b476457f79664a96fcd2",
+  "research/window_live_20261025/summary.csv": "b280b74fe7609bc5b9c8f6be6f32cd47fed60701c4773fa9cfe3f6adafd9f4cc",
+  "research/window_live_20261025/fault_contracts.json": "cf4817485e0209ce0bb1f954bf0d571aacdd7990eab68b114bf1df6dd1b13997",
+  "research/window_live_20261025/REPORT.md": "7dc1c760c6485aaf9f1cf112a091714503a981a1a69e383aa8fb63d12898aa6d",
+  "research/window_live_20261025/README.md": "53ab5f49e81373e07e18aaabbf72ad6b5b3044c510d138e840d0cb3f015069fb"
+}
