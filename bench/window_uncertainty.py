@@ -28,6 +28,7 @@ CONDITIONS = (
     ("after_commit", 3, 1, 6, "moved", True),
     ("after_commit", 3, 0, 6, "same", False),
 )
+ROOT = Path(__file__).resolve().parents[1]
 STRATEGIES = ("unaware", "client_age", "verified")
 
 
