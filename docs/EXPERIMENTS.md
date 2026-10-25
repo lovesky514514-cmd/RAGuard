@@ -98,3 +98,11 @@
 定向本地复测：在订单写入前崩溃、回读关闭的条件下，B5 standard 与 dead_owner 最终均确认成功；RAGuard standard 返回等待，RAGuard dead_owner 最终确认成功。四组均未发现重复副作用或错误确认。测试还包括错误代次、身份不匹配、旧凭证重复使用与非幂等写入的阻断。
 
 **安全边界**：`OwnerTermination` 是实验进程内的受信对象，**不是密码学凭证**；公开 HTTP 入口不接受此字段，不能由 Agent 自行宣称执行者死亡。跨主机故障探测、伪造防护与长时间并发安全尚未得到证明。
+
+## 可信本地进程监督器与执行代次 CAS（2.0 方法加固）
+
+曾经的实验交接由恢复进程通过命令行传递 `dead_generation` 与 `dead_exit_code`。这些字段虽然受实验驱动控制，但不是可信的死亡证明。现已**删除 Gateway 接受调用方自报退出凭证的参数**。只有父监督器保留自己创建的 Python `Popen` 实例，在 `communicate()/wait()` 证明进程结束后，才调用 `ObservedOwner.release`；恢复子进程不接收凭证，只能从 SQLite 看到监督器已原子释放的结果。
+
+`release_terminated` 要求匹配 tenant/task/intent/fingerprint/generation，并且记录仍为 `in_flight`。相同旧代次最多释放一次；接管者的 generation 增加后不能复用旧证据。监督器仅对登记了服务端稳定幂等成功回执契约的写入调用此操作，普通不可逆写入依然禁止盲目重发。该观察以可信同机父进程为前提，不提供跨主机故障证明、密码学鉴权或恶意同机进程防护；不能视为分布式 exactly-once。
+
+公平比较运行 `python -m bench.restart_live --output results/restart_live`。B5 与 RAGuard 均接受相同的已退出旧进程环境；B5 在原生幂等订单上已可安全继续，RAGuard 通过代次 CAS 消除等待旧租约的短板。在没有服务器原生幂等保证时，两者仍必须优先安全停止。**该修复不构成优于 B5 的新科研创新。**

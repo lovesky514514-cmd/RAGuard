@@ -175,6 +175,24 @@ class Ledger:
             self._event(db, call, "retry_claim", "verified_safe_operation")
             return generation + 1
 
+    def release_terminated(self, call: Call, generation: int) -> bool:
+        """本地监督器确认旧进程终止后，以 CAS 只释放相同业务、相同代次。
+
+        不授权外部副作用；是否可重新派发仍由 Gateway 的工具策略判断。
+        """
+        if type(generation) is not int or generation < 1:
+            raise ValueError('非法执行代次')
+        with self._db() as db:
+            changed = db.execute("""UPDATE effects SET state='unknown',updated=?,
+                evidence='observed_owner_exit'
+                WHERE tenant=? AND task=? AND intent=? AND fingerprint=?
+                AND generation=? AND state='in_flight'""",
+                (time.time(), call.tenant, call.task, call.intent,
+                 call.fingerprint, generation)).rowcount
+            if changed:
+                self._event(db, call, 'owner_exit', 'observed_owner_exit')
+            return bool(changed)
+
     def mark_stale(self, call: Call, generation: int) -> None:
         """危险操作租约过期后只标记未知，绝不自动授权重试。"""
         with self._db() as db:

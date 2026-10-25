@@ -22,7 +22,7 @@ from bench.durable_baseline import DurableBaseline
 from bench.oracle import EffectEvent, evaluate
 from bench.runner import BUSINESS_KEY, local_sandbox, raw_call
 from raguard.gateway import Gateway
-from raguard.handoff import OwnerTermination
+from raguard.supervisor import ObservedOwner
 from raguard.identity import BusinessIntentRegistry, VerifiedIdentity
 from raguard.ledger import Ledger
 from raguard.model import Call
@@ -58,27 +58,21 @@ class Episode:
     elapsed_ms: float
 
 
-def _engine(method: str, workspace: Path, client: LocalEvidenceClient,
-            *, termination: OwnerTermination | None = None):
+def _engine(method: str, workspace: Path, client: LocalEvidenceClient):
     if method == 'b5_durable':
-        # 强基线原本就支持稳定幂等键安全续执行，不应人为放慢。
         return DurableBaseline(workspace / 'durable.sqlite3', client)
     if method == 'raguard':
         return Gateway(Ledger(str(workspace / 'ledger.sqlite3')), client,
-                       identities=BusinessIntentRegistry(str(workspace / 'identity.sqlite3')),
-                       owner_termination=termination)
+                       identities=BusinessIntentRegistry(str(workspace / 'identity.sqlite3')))
     raise ValueError('未知方法')
 
 def worker(method: str, tool: str, point: str, origin: str,
-           workspace: Path, *, dead_generation: int = 0, dead_exit_code: int = 0) -> int:
+           workspace: Path) -> int:
     """只由独立 Python 进程调用；强制退出不会运行对象析构逻辑。"""
     client = LocalEvidenceClient(origin, research_business_key=BUSINESS_KEY)
     raw = raw_call(tool)
     call = Call.parse(raw)
-    termination = (OwnerTermination(call.tenant, call.task, call.intent,
-                                    call.fingerprint, dead_generation, dead_exit_code)
-                   if dead_generation else None)
-    engine = _engine(method, workspace, client, termination=termination)
+    engine = _engine(method, workspace, client)
     if point == 'resume':
         if method == 'b5_durable':
             status, _ = engine.call(raw, BUSINESS_REF)
@@ -106,14 +100,10 @@ def worker(method: str, tool: str, point: str, origin: str,
     os._exit(CRASH_AFTER)
 
 
-def _command(method: str, tool: str, point: str, origin: str, work: Path,
-             dead_generation: int = 0, dead_exit_code: int = 0) -> list[str]:
-    cmd = [sys.executable, '-m', 'bench.restart_live', 'worker',
+def _command(method: str, tool: str, point: str, origin: str, work: Path) -> list[str]:
+    return [sys.executable, '-m', 'bench.restart_live', 'worker',
             '--method', method, '--tool', tool, '--point', point,
             '--origin', origin, '--workspace', str(work)]
-    return cmd + (['--dead-generation', str(dead_generation),
-                   '--dead-exit-code', str(dead_exit_code)] if dead_generation else [])
-
 
 def _launch(command: list[str]) -> subprocess.Popen:
     return subprocess.Popen(command, cwd=ROOT, text=True,
@@ -131,18 +121,27 @@ def run_case(method: str, tool: str, point: str, no_readback: bool,
     start = time.perf_counter()
     with local_sandbox(binary, '', no_readback) as origin, tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
-        first = subprocess.run(_command(method, tool, point, origin, work), cwd=ROOT,
-                               capture_output=True, text=True, timeout=12, check=False)
+        # 持有旧 Python worker 的真实进程句柄，必须先观察退出。
+        first = _launch(_command(method, tool, point, origin, work))
+        _stdout, stderr = first.communicate(timeout=12)
         expected_exit = CRASH_BEFORE if point == 'before' else CRASH_AFTER
         if first.returncode != expected_exit:
-            raise RuntimeError(f'崩溃注入未到达预期阶段：{first.returncode}')
+            raise RuntimeError(f'崩溃注入未到达预期阶段：{first.returncode} {stderr[-160:]}')
 
-        # 父监督器已 wait() 确认旧进程退出，才签发仅限旧执行代次的实验凭证。
-        generation = 1 if recovery_policy == 'dead_owner' else 0
-        exit_code = first.returncode if generation else 0
-        # 真正启动多个新的 Python 解释器，共享同一持久数据库和沙箱。
-        processes = [_launch(_command(method, tool, 'resume', origin, work,
-                                      dead_generation=generation, dead_exit_code=exit_code))
+        if method == 'raguard' and recovery_policy == 'dead_owner':
+            # 只有可信父监督器能够做一次代次 CAS；恢复 worker 不接收任何
+            # 自报退出凭证，也没有绕过 Gateway 幂等门禁的权限。
+            raw = raw_call(tool)
+            registry = BusinessIntentRegistry(str(work / 'identity.sqlite3'))
+            original = registry.resolve(VerifiedIdentity(BUSINESS_REF), Call.parse(raw))
+            released = ObservedOwner(first, original, 1).release(
+                Ledger(str(work / 'ledger.sqlite3')), TOOLS[tool])
+            if tool == 'orders.create' and not released:
+                raise RuntimeError('已终止原生幂等执行者交接失败')
+            if tool != 'orders.create' and released:
+                raise RuntimeError('非幂等执行不应提前释放')
+
+        processes = [_launch(_command(method, tool, 'resume', origin, work))
                      for _ in range(contenders)]
         statuses = []
         for proc in processes:
@@ -153,8 +152,7 @@ def run_case(method: str, tool: str, point: str, no_readback: bool,
 
         # 并发窗口结束后再发一个只读/恢复请求，区分暂时 202 和永久未完成。
         final = subprocess.run(
-            _command(method, tool, 'resume', origin, work,
-                     dead_generation=generation, dead_exit_code=exit_code),
+            _command(method, tool, 'resume', origin, work),
             cwd=ROOT, capture_output=True, text=True, timeout=15, check=True,
         )
         final_status = json.loads(final.stdout)['status']
@@ -217,16 +215,12 @@ def main() -> int:
     parser.add_argument('--point', choices=('before', 'after', 'resume'))
     parser.add_argument('--origin')
     parser.add_argument('--workspace', type=Path)
-    parser.add_argument('--dead-generation', type=int, default=0)
-    parser.add_argument('--dead-exit-code', type=int, default=0)
     parser.add_argument('--output', type=Path, default=Path('results/restart_live'))
     args = parser.parse_args()
     if args.command == 'worker':
         if not all((args.method, args.tool, args.point, args.origin, args.workspace)):
             parser.error('worker 缺少必要的执行条件')
-        return worker(args.method, args.tool, args.point, args.origin, args.workspace,
-                      dead_generation=args.dead_generation,
-                      dead_exit_code=args.dead_exit_code)
+        return worker(args.method, args.tool, args.point, args.origin, args.workspace)
     with tempfile.TemporaryDirectory() as temp:
         outcomes = matrix(build_binary(Path(temp)))
     args.output.mkdir(parents=True, exist_ok=True)
