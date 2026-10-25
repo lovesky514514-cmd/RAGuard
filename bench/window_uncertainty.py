@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, asdict
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -150,7 +151,7 @@ def main() -> int:
     if not shutil.which("go"):
         raise RuntimeError("需要 Go 1.21+")
     with tempfile.TemporaryDirectory() as tmp:
-        binary = Path(tmp) / "uncertainty"
+        binary = Path(tmp) / ("uncertainty.exe" if os.name == "nt" else "uncertainty")
         subprocess.run(["go", "build", "-o", str(binary), "./windowlab/cmd/uncertainty"],
                        cwd=Path(__file__).resolve().parents[1] / "mock",
                        check=True, timeout=120, capture_output=True)
