@@ -1,6 +1,7 @@
 """服务端晚提交、时钟保护窗口与作用域的回归测试。"""
 
 import shutil
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,7 +31,7 @@ class LivePairTests(unittest.TestCase):
         from bench.window_uncertainty import ROOT
         import subprocess
         cls.temp = tempfile.TemporaryDirectory()
-        cls.binary = Path(cls.temp.name) / "uncertainty"
+        cls.binary = Path(cls.temp.name) / ("uncertainty.exe" if os.name == "nt" else "uncertainty")
         subprocess.run(["go", "build", "-o", str(cls.binary), "./windowlab/cmd/uncertainty"],
                        cwd=ROOT / "mock", check=True, capture_output=True, timeout=120)
 
