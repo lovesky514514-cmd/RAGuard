@@ -50,6 +50,7 @@ func handler(ttl int64) (http.Handler,error) {
   if r.Method!=http.MethodGet {http.Error(w,"method",405);return}
   send(w,gate.State())
  })
+ mux.HandleFunc("/v1/evidence/commit",server.EvidenceHTTP)
  mux.Handle("/v1/lab/effects",server)
  mux.Handle("/v1/execute",gate.Wrap(server))
  return mux,nil
