@@ -13,6 +13,7 @@ import tempfile
 import time
 import urllib.request
 
+from bench.window_uncertainty_analysis import paired_rows
 from bench.runner import raw_call
 from bench.window_live import METHODS, ORIGIN_SCOPE, WindowClient, engine_call, window_server, write_csv
 from raguard.model import Call
@@ -21,10 +22,18 @@ from raguard.transport import UncertainResult
 # 每个条件单独启动服务端，保证两套恢复者不能共享物理效果。
 CONDITIONS = (
     ("after_commit", 3, 0, 6, "same", True),
+    ("after_commit", 5, 0, 6, "same", True),
     ("after_commit", 6, 0, 6, "same", True),
+    ("after_commit", 6, 0, 9, "same", True),
+    ("after_commit", 3, -2, 6, "same", True),
+    ("after_commit", 3, 2, 6, "same", True),
+    ("after_commit", 3, 0, 6, "moved", True),
     ("before_commit", 3, 0, 6, "same", True),
+    ("before_commit", 6, 0, 6, "same", True),
     ("inflight", 3, 0, 6, "same", True),
     ("inflight", 3, 0, 9, "same", True),
+    ("inflight", 3, 0, 6, "moved", True),
+    ("inflight", 3, 0, 6, "same", False),
     ("after_commit", 3, 1, 6, "moved", True),
     ("after_commit", 3, 0, 6, "same", False),
 )
@@ -95,6 +104,7 @@ def pending(origin: str, target: int) -> None:
 @dataclass(frozen=True)
 class Episode:
     condition: str
+    repeat: int
     method: str
     strategy: str
     final_status: int
@@ -108,7 +118,8 @@ class Episode:
     network_attempts: int
 
 
-def run_case(binary: Path, method: str, strategy: str, condition: tuple) -> Episode:
+def run_case(binary: Path, method: str, strategy: str, condition: tuple,
+             *, repeat: int = 0) -> Episode:
     fault, tick, offset, ttl, scope, guaranteed = condition
     condition_id = f"{fault}-{tick}-{offset}-{ttl}-{scope}-{int(guaranteed)}"
     with window_server(binary, ttl=ttl) as origin, tempfile.TemporaryDirectory() as work:
@@ -123,7 +134,7 @@ def run_case(binary: Path, method: str, strategy: str, condition: tuple) -> Epis
         if control(origin, "advance", {"ticks": tick})["server_tick"] != tick:
             raise RuntimeError("服务器时间推进不一致")
         target_scope = ORIGIN_SCOPE if scope == "same" else "region-b"
-        contract = Contract(6 if guaranteed else None, ORIGIN_SCOPE, 1, fault != "inflight")
+        contract = Contract(6 if guaranteed else None, ORIGIN_SCOPE, 2, fault != "inflight")
         permitted = admitted(strategy, tick + offset, target_scope, contract)
         client.initial = False
         client.scope = target_scope
@@ -139,7 +150,7 @@ def run_case(binary: Path, method: str, strategy: str, condition: tuple) -> Epis
     wrong = len(effects) - correct
     duplicate = max(0, len(effects) - 1)
     unsafe = bool(wrong or duplicate)
-    return Episode(condition_id, method, strategy, final, int(not permitted),
+    return Episode(condition_id, repeat, method, strategy, final, int(not permitted),
                    len(effects), duplicate, wrong, int(final == 200 and unsafe),
                    int(final == 200 and correct == 1 and not unsafe),
                    int(final != 200), truth["attempts"])
@@ -148,7 +159,10 @@ def run_case(binary: Path, method: str, strategy: str, condition: tuple) -> Epis
 def main() -> int:
     parser = argparse.ArgumentParser(description="B5/RAGuard 不确定性 HTTP 配对")
     parser.add_argument("--output", type=Path, default=Path("results/window_uncertainty"))
+    parser.add_argument("--repeats", type=int, default=1)
     args = parser.parse_args()
+    if not 1 <= args.repeats <= 10:
+        parser.error("重复次数必须在 1 至 10 之间")
     if not shutil.which("go"):
         raise RuntimeError("需要 Go 1.21+")
     with tempfile.TemporaryDirectory() as tmp:
@@ -156,11 +170,15 @@ def main() -> int:
         subprocess.run(["go", "build", "-o", str(binary), "./windowlab/cmd/uncertainty"],
                        cwd=Path(__file__).resolve().parents[1] / "mock",
                        check=True, timeout=120, capture_output=True)
-        rows = [run_case(binary, method, strategy, condition)
+        rows = [run_case(binary, method, strategy, condition, repeat=repeat)
+                for repeat in range(args.repeats)
                 for condition in CONDITIONS
                 for strategy in STRATEGIES for method in METHODS]
+    compared = paired_rows(rows, conditions=CONDITIONS, strategies=STRATEGIES,
+                           repeats=args.repeats)
     args.output.mkdir(parents=True, exist_ok=True)
     write_csv(args.output / "episodes.csv", [asdict(row) for row in rows])
+    write_csv(args.output / "paired_summary.csv", compared)
     summaries = []
     for strategy in STRATEGIES:
         for method in METHODS:
@@ -180,6 +198,9 @@ def main() -> int:
         "actual_ttl_not_visible_to_recovery": True,
         "oracle_not_visible_to_recovery": True,
         "paired_methods": METHODS,
+        "repeats": args.repeats,
+        "max_clock_error": 2,
+        "deterministic_scenarios": True,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     lines = ["# 不确定性配对实验", "",
              "受控时间与晚提交压力用例；不代表真实厂商事故率或独立统计样本。",
@@ -190,8 +211,19 @@ def main() -> int:
         lines.append(f"| {item['method']} | {item['strategy']} | {item['cases']} | "
                      f"{item['safe_confirmation']} | {item['duplicates']} | "
                      f"{item['wrong_scope']} | {item['unsafe_confirmation']} | {item['unresolved']} |")
-    lines.append("\n重复效果和错作用域可能重叠，不可相加。")
+    lines.extend(["", f"共 {len(CONDITIONS)} 个预设条件，{len(rows)} 条独立 HTTP Episode，"
+                  f"{len(compared)} 组严格配对。",
+                  "重复运行不等于随机抽样，不能据此声称置信区间或真实事故发生率。",
+                  "重复效果和错作用域可能重叠，不可相加。"])
     (args.output / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    from hashlib import sha256
+    names = ("episodes.csv", "paired_summary.csv", "summary.csv",
+             "fault_contracts.json", "REPORT.md")
+    hashes = {name: sha256((args.output / name).read_bytes()).hexdigest()
+              for name in names}
+    (args.output / "SHA256SUMS.json").write_text(
+        json.dumps(hashes, indent=2) + "\n", encoding="utf-8")
+    print("\n".join(lines))
     return 0
 
 
