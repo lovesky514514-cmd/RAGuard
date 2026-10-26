@@ -71,14 +71,17 @@ def write_csv(path, rows):
 def run(train, test, seed, output):
     if not 1 <= train <= 10000 or not 1 <= test <= 10000:
         raise ValueError("训练与测试样本范围为 1-10000")
-    calibrated = {}
-    for offset, domain in enumerate(PROFILES):
-        training = draw(seed + offset * 100001, domain, train)
-        calibrated[domain] = calibration(
-            [record[2] for record in training], SOURCES, CONTEXT
-        )
+    # 训练只使用 matched；reversed 是封存的迁移评估域。
+    training = draw(seed, "matched", train)
+    calibrated = calibration([case[2] for case in training], SOURCES, CONTEXT)
+    split = max(1, len(training) // 2)
+    blocks = (training[:split], training[split:] or training[:split])
+    estimates = [
+        calibration([case[2] for case in block], SOURCES, CONTEXT)
+        for block in blocks
+    ]
     pessimistic = {
-        source.name: min(calibrated[d][source.name] for d in PROFILES)
+        source.name: min(block[source.name] for block in estimates)
         for source in SOURCES
     }
     rows = []
@@ -90,7 +93,7 @@ def run(train, test, seed, output):
                 if policy == "robust":
                     planning, rates = "calibrated", pessimistic
                 elif policy == "calibrated":
-                    planning, rates = "calibrated", calibrated["matched"]
+                    planning, rates = "calibrated", calibrated
                 else:
                     planning, rates = policy, None
                 result = query_budgeted(
@@ -136,9 +139,12 @@ def run(train, test, seed, output):
         "kind": "synthetic_offline_not_go_http", "seed": seed,
         "train_per_domain": train, "test_per_domain": test,
         "profiles": PROFILES, "budget": asdict(BUDGET),
-        "observed_calibration": calibrated,
+        "observed_calibration": {"matched_only": calibrated},
+        "conservative_split_lower_bound": pessimistic,
+        "evaluation_domain_not_used_in_training": "reversed",
         "oracle_used_for_evaluation_only": True,
         "calibration_cost_excluded": True,
+        "robust_is_training_split_heuristic_not_distribution_free_guarantee": True,
         "no_real_physical_execution": True,
     }
     (output / "protocol.json").write_text(
@@ -147,6 +153,8 @@ def run(train, test, seed, output):
     report = [
         "# 证据预算合成实验", "",
         "校准集与评估集独立，数据为合成抽样，非真实 Go HTTP 测试。",
+        "训练仅使用 matched，反转域在训练和调参阶段不可见。",
+        "保守策略仅基于训练集拆分下界，不保证分布无关鲁棒性。",
         "不计训练查询成本；不得据此宣称 RAGuard 优于 B5。",
         "",
         "| 环境 | 策略 | 案例 | 安全确认 | 不安全授权 | 未完成 | 总成本 |",
