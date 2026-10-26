@@ -37,6 +37,18 @@ jobs:
           cd mock
           go test ./...
           go vet ./...
+      - name: Paired uncertainty experiment
+        if: runner.os == 'Linux'
+        run: |
+          python -m bench.window_uncertainty --repeats 3 --output results/window_uncertainty_ci
+      - name: Archive paired evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: window-uncertainty-ci
+          path: results/window_uncertainty_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
