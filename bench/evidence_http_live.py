@@ -42,9 +42,12 @@ class EvidenceClient(WindowClient):
         self.tick = tick
         self.budget_result = None
         self.queried = False
+        self.enabled = False
 
     def readback(self, call, policy):
         del policy
+        if not self.enabled:
+            return None
         if self.queried:
             return None
         self.queried = True
@@ -110,7 +113,9 @@ def run_one(binary: Path, profile: str, fault: str, tick: int,
         work = Path(tmp)
         engine_call(engine, work, client, raw)
         control(origin, "advance", {"ticks": tick})
-        # 恢复调用只允许查询，绝不因过期幂等键重新派发危险写入。
+        # 恢复阶段才开放证据预算；前序故障不消耗研究预算。
+        client.enabled = True
+        client.queried = False
         client.drop_count = 0
         status = engine_call(engine, work, client, raw)
         truth = control(origin, "effects")
