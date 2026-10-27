@@ -97,14 +97,14 @@ class WindowClient(SandboxClient):
 
 
 @contextmanager
-def window_server(binary: Path, ttl: int = TTL_TICKS):
+def window_server(binary: Path, ttl: int = TTL_TICKS, *, extra_args: tuple[str, ...] = ()):
     """独立子进程模拟服务端；仅研究监督器能推进服务器时钟。"""
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
         port = probe.getsockname()[1]
     origin = f'http://127.0.0.1:{port}'
     process = subprocess.Popen([str(binary), '--addr', f'127.0.0.1:{port}',
-                                '--ttl', str(ttl)], cwd=ROOT,
+                                '--ttl', str(ttl), *extra_args], cwd=ROOT,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(100):
