@@ -20,6 +20,7 @@ from bench.runner import raw_call
 from bench.window_live import METHODS, ORIGIN_SCOPE, WindowClient, engine_call, window_server, write_csv
 from bench.window_uncertainty import control
 from raguard.model import Call
+from raguard.transport import UncertainResult
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = (
@@ -43,6 +44,14 @@ class EvidenceClient(WindowClient):
         self.budget_result = None
         self.queried = False
         self.enabled = False
+        self.blocked_recovery_writes = 0
+
+    def execute(self, call, policy):
+        if self.enabled:
+            # 共享消融：排除原生重放导致的确认，显式记录被拦截的写入。
+            self.blocked_recovery_writes += 1
+            raise UncertainResult("仅证据恢复实验禁止二次写入")
+        return super().execute(call, policy)
 
     def readback(self, call, policy):
         del policy
@@ -102,6 +111,7 @@ class Episode:
     evidence_cost: int
     evidence_queries: int
     evidence_latency: int
+    blocked_recovery_writes: int
     network_attempts: int
 
 
@@ -128,7 +138,8 @@ def run_one(binary: Path, profile: str, fault: str, tick: int,
                    int(confirmed), int(status == 200 and not confirmed),
                    duplicate, wrong, int(status != 200),
                    result.cost if result else 0, result.queries if result else 0,
-                   result.latency if result else 0, truth["attempts"])
+                   result.latency if result else 0,
+                   client.blocked_recovery_writes, truth["attempts"])
 
 
 def paired(rows):
@@ -172,6 +183,7 @@ def main():
     lines=["# 真实 HTTP 证据策略对照","",
            "仅隔离 Go 沙箱；B5 与 RAGuard 原有账本，不修改生产 Gateway。",
            "ECF 仅为共享证据预算调度器，不是第三套独立执行引擎。",
+           "新增研究消融：双方恢复阶段经共同适配器禁止所有二次写入，不能当作原生 B5/Gateway 端到端指标。",
            "来源是同一物理日志的不同可见性视图，不能称为独立权威。",
            "校准排序是预置先验，并非从真实训练 HTTP 实验估计；不声称学习优势。",
            "该测试只构成有限确定性场景，非统计独立样本。","",
