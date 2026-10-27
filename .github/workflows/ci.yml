@@ -61,6 +61,17 @@ jobs:
           path: results/evidence_budget_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Real HTTP evidence comparison
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_http_live --output results/evidence_http_ci
+      - name: Archive HTTP evidence comparison
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-http-ci
+          path: results/evidence_http_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
