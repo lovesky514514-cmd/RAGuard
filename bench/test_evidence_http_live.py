@@ -31,7 +31,13 @@ class EvidenceHTTPTests(unittest.TestCase):
             self.assertLessEqual(row.evidence_cost, BUDGET.cost)
             self.assertLessEqual(row.evidence_queries, BUDGET.queries)
             self.assertEqual(row.duplicate_effects, 0)
+            self.assertGreaterEqual(row.blocked_recovery_writes, 0)
         self.assertEqual(len(SOURCES), 2)
+        matched = {(r.engine, r.strategy): r for r in rows}
+        for engine in ("b5", "raguard"):
+            self.assertEqual(matched[(engine, "calibrated")].confirmed, 1)
+            self.assertEqual(matched[(engine, "fixed")].confirmed, 0)
+            self.assertGreater(matched[(engine, "fixed")].blocked_recovery_writes, 0)
 
     def test_incomplete_pairs_rejected(self):
         with self.assertRaises(ValueError):
