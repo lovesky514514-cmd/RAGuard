@@ -28,7 +28,7 @@ SOURCES = (
     Source("quick", 2, 1, frozenset({Kind.COMMITTED})),
 )
 BUDGET = Budget(2, 2, 2)
-METHOD_POLICIES = ("fixed", "calibrated")
+METHOD_POLICIES = ("fixed", "fixed_quick", "calibrated")
 PROFILES = ("matched", "shifted")
 FAULTS = ("before_commit", "after_commit")
 TICKS = (0, 1, 3)
@@ -86,9 +86,12 @@ class EvidenceClient(WindowClient):
                 "windowlab", 1, data["valid_until"], authenticated=True, final=True,
             )
 
+        # 固定 quick 对照与校准策略恰好使用相同来源、成本与延迟。
+        sources = tuple(reversed(SOURCES)) if self.strategy == "fixed_quick" else SOURCES
+        policy = "fixed" if self.strategy == "fixed_quick" else self.strategy
         self.budget_result = query_budgeted(
-            context, SOURCES, BUDGET, fetch, policy=self.strategy,
-            estimates=ESTIMATES if self.strategy == "calibrated" else None,
+            context, sources, BUDGET, fetch, policy=policy,
+            estimates=ESTIMATES if policy == "calibrated" else None,
         )
         if self.budget_result.verdict.action == Decision.CONFIRM:
             return {"effect_id": "verified-positive-readback"}
@@ -186,6 +189,7 @@ def main():
            "新增研究消融：双方恢复阶段经共同适配器禁止所有二次写入，不能当作原生 B5/Gateway 端到端指标。",
            "来源是同一物理日志的不同可见性视图，不能称为独立权威。",
            "校准排序是预置先验，并非从真实训练 HTTP 实验估计；不声称学习优势。",
+           "fixed_quick 是相同花费的静态 quick 来源对照，防止把成本差误称算法收益。",
            "该测试只构成有限确定性场景，非统计独立样本。","",
            "| 环境 | 方法 | 策略 | 案例 | 安全确认 | 不安全确认 | 重复效果 | 未完成 | 证据查询 |",
            "|---|---|---|---:|---:|---:|---:|---:|---:|"]
