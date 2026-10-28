@@ -25,7 +25,7 @@ class EvidenceHTTPTests(unittest.TestCase):
     def test_positive_evidence_same_cost_cap_for_both_engines(self):
         rows = [
             run_one(self.binary, "matched", "after_commit", 0, engine, strategy)
-            for engine in ("b5", "raguard") for strategy in ("fixed", "calibrated")
+            for engine in ("b5", "raguard") for strategy in ("fixed", "fixed_quick", "calibrated")
         ]
         for row in rows:
             self.assertLessEqual(row.evidence_cost, BUDGET.cost)
@@ -36,6 +36,11 @@ class EvidenceHTTPTests(unittest.TestCase):
         matched = {(r.engine, r.strategy): r for r in rows}
         for engine in ("b5", "raguard"):
             self.assertEqual(matched[(engine, "calibrated")].confirmed, 1)
+            self.assertEqual(matched[(engine, "fixed_quick")].confirmed, 1)
+            self.assertEqual(matched[(engine, "fixed_quick")].evidence_cost,
+                             matched[(engine, "calibrated")].evidence_cost)
+            self.assertEqual(matched[(engine, "fixed_quick")].evidence_queries,
+                             matched[(engine, "calibrated")].evidence_queries)
             self.assertEqual(matched[(engine, "fixed")].confirmed, 0)
             self.assertGreater(matched[(engine, "fixed")].blocked_recovery_writes, 0)
 
