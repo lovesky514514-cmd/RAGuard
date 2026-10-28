@@ -72,6 +72,17 @@ jobs:
           path: results/evidence_http_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Online evidence drift baseline
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_online_experiment --length 400 --seed 20261028 --output results/evidence_online_ci
+      - name: Archive online evidence drift results
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-online-ci
+          path: results/evidence_online_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
