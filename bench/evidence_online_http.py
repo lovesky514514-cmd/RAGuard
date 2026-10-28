@@ -83,59 +83,59 @@ def run_engine(binary: Path, cases: list[Scenario], engine: str,
     results = []
     for phase in PROFILES:
         segment = [case for case in cases if case.phase == phase]
-        # 每个阶段由独立的 Go 服务进程模拟来源可见性的突变。
-        with window_server(binary, ttl=6,
-                           extra_args=("--evidence-mode", phase)) as origin, \
-                tempfile.TemporaryDirectory() as folder:
-            work = Path(folder)
-            for case in segment:
-                source = choice(policy, case.number, learner)
-                raw = raw_call("orders.create")
-                raw["task"] = f"online-{case.number}"
-                raw["intent"] = f"operation-{case.number}"
-                call = Call.parse(raw)
-                client = EvidenceClient(
-                    origin, "after_commit" if case.committed else "before_commit",
-                    "fixed_quick" if source == "quick" else "fixed", 0,
-                )
-                case_dir = work / f"case-{case.number}"
-                case_dir.mkdir()
-                engine_call(engine, case_dir, client, raw)
+        # 每个案例独立启动 Go 沙箱，避免服务端时钟和物理日志相互污染。
+        for case in segment:
+            with window_server(binary, ttl=6,
+                               extra_args=("--evidence-mode", phase)) as origin, \
+                    tempfile.TemporaryDirectory() as folder:
+                work = Path(folder)
+                  source = choice(policy, case.number, learner)
+                  raw = raw_call("orders.create")
+                  raw["task"] = f"online-{case.number}"
+                  raw["intent"] = f"operation-{case.number}"
+                  call = Call.parse(raw)
+                  client = EvidenceClient(
+                      origin, "after_commit" if case.committed else "before_commit",
+                      "fixed_quick" if source == "quick" else "fixed", 0,
+                  )
+                  case_dir = work / f"case-{case.number}"
+                  case_dir.mkdir()
+                  engine_call(engine, case_dir, client, raw)
 
-                # 恢复只能读一次正向证据，不得借服务端幂等重放绕开实验。
-                response = control(origin, "advance", {"ticks": case.recovery_delay})
-                client.tick = response["server_tick"]
-                client.enabled = True
-                client.queried = False
-                client.drop_count = 0
-                status = engine_call(engine, case_dir, client, raw)
-                budget = client.budget_result
-                if budget is None or budget.queries != 1 or budget.sources != (source,):
-                    raise AssertionError("证据查询未遵守单来源同预算协议")
-                if budget.cost != next(item.cost for item in CHOICES if item.source == source):
-                    raise AssertionError("证据成本未正确计费")
+                  # 恢复只能读一次正向证据，不得借服务端幂等重放绕开实验。
+                  response = control(origin, "advance", {"ticks": case.recovery_delay})
+                  client.tick = response["server_tick"]
+                  client.enabled = True
+                  client.queried = False
+                  client.drop_count = 0
+                  status = engine_call(engine, case_dir, client, raw)
+                  budget = client.budget_result
+                  if budget is None or budget.queries != 1 or budget.sources != (source,):
+                      raise AssertionError("证据查询未遵守单来源同预算协议")
+                  if budget.cost != next(item.cost for item in CHOICES if item.source == source):
+                      raise AssertionError("证据成本未正确计费")
 
-                # 独立评估器才允许读取服务端物理效果日志。
-                truth = control(origin, "effects")
-                effects = [
-                    item for item in truth["effects"]
-                    if item["key"] == call.stable_key and
-                    item["fingerprint"] == call.fingerprint and
-                    item["scope"] == ORIGIN_SCOPE
-                ]
-                if len(effects) != int(case.committed):
-                    raise AssertionError("故障注入和物理提交不一致")
-                safe = status == 200 and len(effects) == 1
-                unsafe = status == 200 and len(effects) != 1
-                observed = budget.verdict.action.value == "confirm"
-                if policy == "sliding_ucb":
-                    learner.observe(source, observed)
-                results.append(Episode(
-                    case.number, phase, engine, policy, source, int(case.committed),
-                    len(effects), status, int(safe), int(unsafe),
-                    max(0, len(effects) - 1), int(status != 200),
-                    budget.cost, budget.queries, client.blocked_recovery_writes,
-                ))
+                  # 独立评估器才允许读取服务端物理效果日志。
+                  truth = control(origin, "effects")
+                  effects = [
+                      item for item in truth["effects"]
+                      if item["key"] == call.stable_key and
+                      item["fingerprint"] == call.fingerprint and
+                      item["scope"] == ORIGIN_SCOPE
+                  ]
+                  if len(effects) != int(case.committed):
+                      raise AssertionError("故障注入和物理提交不一致")
+                  safe = status == 200 and len(effects) == 1
+                  unsafe = status == 200 and len(effects) != 1
+                  observed = budget.verdict.action.value == "confirm"
+                  if policy == "sliding_ucb":
+                      learner.observe(source, observed)
+                  results.append(Episode(
+                      case.number, phase, engine, policy, source, int(case.committed),
+                      len(effects), status, int(safe), int(unsafe),
+                      max(0, len(effects) - 1), int(status != 200),
+                      budget.cost, budget.queries, client.blocked_recovery_writes,
+                  ))
     return results
 
 
