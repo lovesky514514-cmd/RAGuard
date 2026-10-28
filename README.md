@@ -1,6 +1,12 @@
 # RAGuard
 
-面向工具型 Agent 的安全恢复研究系统。Python 负责状态管理与恢复判断，Go 负责可注入故障的本地服务。仅用于研究沙箱，不连接真实支付或业务系统。
+**面向工具调用型 AI Agent 的可验证副作用恢复与安全重试研究框架。**
+
+RAGuard 使用 **Python** 管理可信业务身份、持久化执行账本和恢复决策，使用 **Go** 构建真实 HTTP 故障沙箱，独立记录外部物理效果。研究重点是：工具调用超时、回执丢失、请求晚提交或幂等窗口过期时，如何依据权威证据判断**确认、停止或允许重新执行**。
+
+**当前研究状态：** 已建立独立 B5 强基线及真实 HTTP 配对实验；在相同证据条件下，现有结果尚未证明 RAGuard 优于 B5。证据能力与有限预算查询（ECF）仍是隔离研究原型，不能宣称生产级 exactly-once。
+
+[已验证研究基线（2.0）](https://github.com/lovesky514514-cmd/RAGuard/tree/2.0) · [ECF 研究分支](https://github.com/lovesky514514-cmd/RAGuard/tree/research/contract-evidence) · [研究问题记录](https://github.com/lovesky514514-cmd/RAGuard/blob/2.0/docs/%E9%97%AE%E9%A2%98%E8%AE%B0%E5%BD%95.md)
 
 ## Windows 快速启动
 
