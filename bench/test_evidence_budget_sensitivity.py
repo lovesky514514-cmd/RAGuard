@@ -2,7 +2,7 @@
 
 import unittest
 
-from bench.evidence_budget_sensitivity import aggregate
+from bench.evidence_budget_sensitivity import aggregate, paired_differences
 
 
 class SensitivityTests(unittest.TestCase):
@@ -20,6 +20,9 @@ class SensitivityTests(unittest.TestCase):
                                      "engine": engine, "policy": policy, "safe": value,
                                      "cost": 10, "skipped_queries": 1, "unsafe": 0})
         result = aggregate(rows, (41, 42), (12,))
+        deltas = paired_differences(rows, (41, 42), (12,))
+        self.assertEqual(len(deltas), 24)
+        self.assertTrue(all(d['delta_safe'] == 0 for d in deltas))
         self.assertEqual(len(result), 16)
         self.assertEqual(result[0]["mean_safe"], 3)
         self.assertEqual(result[0]["min_safe"], 2)
