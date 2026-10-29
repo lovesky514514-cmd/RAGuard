@@ -45,6 +45,42 @@ def aggregate(records: list[dict], seeds: tuple[int, ...], caps: tuple[int, ...]
     return summary
 
 
+
+def paired_differences(records: list[dict], seeds: tuple[int, ...],
+                       caps: tuple[int, ...]) -> list[dict]:
+    """同一个种子、预算、故障阶段和引擎内计算配对差值。"""
+    index = {}
+    for item in records:
+        key = (item["seed"], item["cap"], item["phase"], item["engine"], item["policy"])
+        if key in index:
+            raise ValueError("重复策略记录")
+        index[key] = item
+    expected = {(seed, cap, phase, engine, policy)
+                for seed in seeds for cap in caps for phase in PROFILES
+                for engine in METHODS for policy in POLICIES}
+    if set(index) != expected:
+        raise ValueError("跨种子配对不完整")
+    result = []
+    for seed in seeds:
+        for cap in caps:
+            for phase in PROFILES:
+                for engine in METHODS:
+                    reference = index[(seed, cap, phase, engine, "fixed_cheap")]
+                    for policy in POLICIES:
+                        if policy == "fixed_cheap":
+                            continue
+                        observed = index[(seed, cap, phase, engine, policy)]
+                        result.append({
+                            "seed": seed, "cap": cap, "phase": phase, "engine": engine,
+                            "policy": policy, "reference": "fixed_cheap",
+                            "delta_safe": observed["safe"] - reference["safe"],
+                            "delta_cost": observed["cost"] - reference["cost"],
+                            "delta_unresolved": observed["unresolved"] - reference["unresolved"],
+                            "delta_skipped": observed["skipped_queries"] - reference["skipped_queries"],
+                        })
+    return result
+
+
 def write(path: Path, rows: list[dict]) -> None:
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=rows[0])
@@ -67,8 +103,10 @@ def study(seeds: tuple[int, ...], caps: tuple[int, ...], length: int, output: Pa
             for item in run(seed, length, path, budget_cap=True, cap_units=cap):
                 records.append({"seed": seed, "cap": cap, **item})
     summary = aggregate(records, seeds, caps)
+    differences = paired_differences(records, seeds, caps)
     write(output / "per_seed.csv", records)
     write(output / "summary.csv", summary)
+    write(output / "paired_differences.csv", differences)
     (output / "protocol.json").write_text(json.dumps({
         "kind": "independent_seed_real_go_http_budget_sensitivity",
         "seeds": seeds, "caps": caps, "cases_per_seed": length,
@@ -80,14 +118,16 @@ def study(seeds: tuple[int, ...], caps: tuple[int, ...], length: int, output: Pa
     }, indent=2) + "\n", encoding="utf-8")
     lines = ["# 多种子真实 HTTP 预算敏感性", "",
              "均值、标准差和范围以独立随机种子为单位；不把回合数作为独立样本。",
-             "仅受控 Go 沙箱，方法增益和可推广性仍未证明。", "",
+             "仅受控 Go 沙箱，方法增益和可推广性仍未证明。",
+             "paired_differences.csv 以固定 cheap 为共同参照，每组按相同种子配对。", "",
              "| 上限 | 阶段 | 引擎 | 策略 | 种子 | 平均确认 | 标准差 | 平均成本 |",
              "|---:|---|---|---|---:|---:|---:|---:|"]
     for x in summary:
         lines.append(f"| {x['cap']} | {x['phase']} | {x['engine']} | {x['policy']} | "
                      f"{x['seeds']} | {x['mean_safe']} | {x['sd_safe']} | {x['mean_cost']} |")
     (output / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    names = ("per_seed.csv", "summary.csv", "protocol.json", "REPORT.md")
+    names = ("per_seed.csv", "summary.csv", "paired_differences.csv",
+             "protocol.json", "REPORT.md")
     (output / "SHA256SUMS.json").write_text(json.dumps({
         name: sha256((output / name).read_bytes()).hexdigest() for name in names
     }, indent=2) + "\n", encoding="utf-8")
