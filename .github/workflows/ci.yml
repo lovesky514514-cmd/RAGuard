@@ -116,6 +116,17 @@ jobs:
           path: results/evidence_budget_cap_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Multi-seed budget sensitivity smoke test
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_budget_sensitivity --seeds 41,42 --caps 8,12 --length 8 --output results/evidence_sensitivity_ci
+      - name: Archive budget sensitivity results
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-sensitivity-ci
+          path: results/evidence_sensitivity_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
