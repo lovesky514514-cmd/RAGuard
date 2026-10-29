@@ -28,6 +28,10 @@ class OnlineHTTPTests(unittest.TestCase):
             with self.subTest(count=count), self.assertRaises(ValueError):
                 scenarios(12, count)
 
+    def test_exact_spend_rejects_unequal_cost(self):
+        with self.assertRaises(ValueError):
+            validate([], 8, exact_budget=True)
+
     def test_incomplete_and_duplicate_pair_fail(self):
         with self.assertRaises(ValueError):
             validate([], 8)
