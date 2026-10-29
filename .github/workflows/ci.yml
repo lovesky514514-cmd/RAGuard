@@ -105,6 +105,17 @@ jobs:
           path: results/evidence_exact_spend_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Matched cumulative budget cap without forced substitution
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_online_http --length 40 --seed 20261029 --budget-cap --output results/evidence_budget_cap_ci
+      - name: Archive budget cap HTTP evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-budget-cap-ci
+          path: results/evidence_budget_cap_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
