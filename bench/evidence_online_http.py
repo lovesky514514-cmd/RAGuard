@@ -81,12 +81,12 @@ def choice(policy: str, number: int, learner: SlidingWindowUCB) -> str:
 
 def run_engine(binary: Path, cases: list[Scenario], engine: str,
                policy: str, *, exact_budget: bool = False,
-               budget_cap: bool = False) -> list[Episode]:
+               budget_cap: bool = False, cap_units: int | None = None) -> list[Episode]:
     """每个方案单独执行等价故障；学习器只能看到实际所选来源。"""
     learner = SlidingWindowUCB(CHOICES, window=12, exploration=.35)
     tracker = (ExactSpend({"cheap": 1, "quick": 2}, len(cases),
                           len(cases) * 3 // 2) if exact_budget else None)
-    remaining = len(cases) * 3 // 2 if budget_cap else None
+    remaining = (cap_units if cap_units is not None else len(cases) * 3 // 2) if budget_cap else None
     results = []
     for phase in PROFILES:
         segment = [case for case in cases if case.phase == phase]
@@ -161,7 +161,7 @@ def run_engine(binary: Path, cases: list[Scenario], engine: str,
 
 
 def validate(rows: list[Episode], length: int, *, exact_budget: bool = False,
-             budget_cap: bool = False) -> None:
+             budget_cap: bool = False, cap_units: int | None = None) -> None:
     expected = {(engine, policy, index)
                 for engine in METHODS for policy in POLICIES
                 for index in range(length)}
@@ -180,7 +180,7 @@ def validate(rows: list[Episode], length: int, *, exact_budget: bool = False,
         elif row.queries != 1 or row.cost not in (1, 2):
             raise ValueError("证据预算违反协议")
     if exact_budget or budget_cap:
-        target = length * 3 // 2
+        target = cap_units if budget_cap and cap_units is not None else length * 3 // 2
         for engine in METHODS:
             for policy in POLICIES:
                 spent = sum(r.cost for r in rows if r.engine == engine and r.policy == policy)
@@ -189,9 +189,13 @@ def validate(rows: list[Episode], length: int, *, exact_budget: bool = False,
 
 
 def run(seed: int, length: int, output: Path, *, exact_budget: bool = False,
-        budget_cap: bool = False) -> list[dict]:
+        budget_cap: bool = False, cap_units: int | None = None) -> list[dict]:
     if exact_budget and budget_cap:
         raise ValueError("不能同时选择精确花费与预算上限")
+    if cap_units is not None:
+        if (not budget_cap or type(cap_units) is not int
+                or not 0 <= cap_units <= length * max(item.cost for item in CHOICES)):
+            raise ValueError("明确预算只能用于上限模式，且必须在合法范围内")
     cases = scenarios(seed, length)
     with tempfile.TemporaryDirectory() as folder:
         binary = Path(folder) / ("uncertainty.exe" if os.name == "nt" else "uncertainty")
@@ -200,8 +204,9 @@ def run(seed: int, length: int, output: Path, *, exact_budget: bool = False,
         rows = [row for engine in METHODS for policy in POLICIES
                 for row in run_engine(binary, cases, engine, policy,
                                       exact_budget=exact_budget,
-                                      budget_cap=budget_cap)]
-    validate(rows, length, exact_budget=exact_budget, budget_cap=budget_cap)
+                                      budget_cap=budget_cap, cap_units=cap_units)]
+    validate(rows, length, exact_budget=exact_budget, budget_cap=budget_cap,
+             cap_units=cap_units)
 
     summary = []
     for phase in PROFILES:
@@ -236,6 +241,8 @@ def run(seed: int, length: int, output: Path, *, exact_budget: bool = False,
         "sliding_ucb_is_prior_art": True,
         "exact_cumulative_spend": exact_budget,
         "budget_cap_without_forced_substitution": budget_cap,
+        "budget_cap_units": (cap_units if cap_units is not None else length * 3 // 2)
+                            if budget_cap else None,
         "target_spend_per_method_policy": length * 3 // 2 if exact_budget else None,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report = [
@@ -270,9 +277,10 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("results/evidence_online_http"))
     parser.add_argument("--exact-budget", action="store_true")
     parser.add_argument("--budget-cap", action="store_true")
+    parser.add_argument("--cap-units", type=int)
     args = parser.parse_args()
     run(args.seed, args.length, args.output, exact_budget=args.exact_budget,
-        budget_cap=args.budget_cap)
+        budget_cap=args.budget_cap, cap_units=args.cap_units)
 
 
 if __name__ == "__main__":
