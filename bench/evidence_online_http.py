@@ -15,6 +15,7 @@ import tempfile
 from bench.evidence_http_live import EvidenceClient
 from bench.evidence_online_experiment import POLICIES
 from bench.evidence_online_policy import Choice, SlidingWindowUCB
+from bench.evidence_equal_spend import ExactSpend
 from bench.runner import raw_call
 from bench.window_live import METHODS, ORIGIN_SCOPE, engine_call, window_server, write_csv
 from bench.window_uncertainty import control
@@ -50,6 +51,7 @@ class Episode:
     cost: int
     queries: int
     blocked_writes: int
+    forced_choice: int = 0
 
 
 def scenarios(seed: int, length: int) -> list[Scenario]:
@@ -77,9 +79,11 @@ def choice(policy: str, number: int, learner: SlidingWindowUCB) -> str:
 
 
 def run_engine(binary: Path, cases: list[Scenario], engine: str,
-               policy: str) -> list[Episode]:
+               policy: str, *, exact_budget: bool = False) -> list[Episode]:
     """每个方案单独执行等价故障；学习器只能看到实际所选来源。"""
     learner = SlidingWindowUCB(CHOICES, window=12, exploration=.35)
+    tracker = (ExactSpend({"cheap": 1, "quick": 2}, len(cases),
+                          len(cases) * 3 // 2) if exact_budget else None)
     results = []
     for phase in PROFILES:
         segment = [case for case in cases if case.phase == phase]
@@ -89,7 +93,8 @@ def run_engine(binary: Path, cases: list[Scenario], engine: str,
                                extra_args=("--evidence-mode", phase)) as origin, \
                     tempfile.TemporaryDirectory() as folder:
                 work = Path(folder)
-                source = choice(policy, case.number, learner)
+                preferred = choice(policy, case.number, learner)
+                source, forced = tracker.select(preferred) if tracker else (preferred, False)
                 raw = raw_call("orders.create")
                 raw["task"] = f"online-{case.number}"
                 raw["intent"] = f"operation-{case.number}"
@@ -135,11 +140,14 @@ def run_engine(binary: Path, cases: list[Scenario], engine: str,
                     len(effects), status, int(safe), int(unsafe),
                     max(0, len(effects) - 1), int(status != 200),
                     budget.cost, budget.queries, client.blocked_recovery_writes,
+                    int(forced),
                 ))
+    if tracker:
+        tracker.verify()
     return results
 
 
-def validate(rows: list[Episode], length: int) -> None:
+def validate(rows: list[Episode], length: int, *, exact_budget: bool = False) -> None:
     expected = {(engine, policy, index)
                 for engine in METHODS for policy in POLICIES
                 for index in range(length)}
@@ -154,17 +162,24 @@ def validate(rows: list[Episode], length: int) -> None:
             raise ValueError("不同策略的物理故障不等价")
         if row.queries != 1 or row.cost not in (1, 2):
             raise ValueError("证据预算违反协议")
+    if exact_budget:
+        target = length * 3 // 2
+        for engine in METHODS:
+            for policy in POLICIES:
+                if sum(r.cost for r in rows if r.engine == engine and r.policy == policy) != target:
+                    raise ValueError("跨策略累计成本不相等")
 
 
-def run(seed: int, length: int, output: Path) -> list[dict]:
+def run(seed: int, length: int, output: Path, *, exact_budget: bool = False) -> list[dict]:
     cases = scenarios(seed, length)
     with tempfile.TemporaryDirectory() as folder:
         binary = Path(folder) / ("uncertainty.exe" if os.name == "nt" else "uncertainty")
         subprocess.run(["go", "build", "-o", str(binary), "./windowlab/cmd/uncertainty"],
                        cwd=ROOT / "mock", check=True, timeout=120, capture_output=True)
         rows = [row for engine in METHODS for policy in POLICIES
-                for row in run_engine(binary, cases, engine, policy)]
-    validate(rows, length)
+                for row in run_engine(binary, cases, engine, policy,
+                                      exact_budget=exact_budget)]
+    validate(rows, length, exact_budget=exact_budget)
 
     summary = []
     for phase in PROFILES:
@@ -180,6 +195,7 @@ def run(seed: int, length: int, output: Path) -> list[dict]:
                     "unresolved": sum(r.unresolved for r in part),
                     "cost": sum(r.cost for r in part),
                     "blocked_writes": sum(r.blocked_writes for r in part),
+                    "forced_choices": sum(r.forced_choice for r in part),
                 })
     output.mkdir(parents=True, exist_ok=True)
     write_csv(output / "episodes.csv", [asdict(row) for row in rows])
@@ -195,6 +211,8 @@ def run(seed: int, length: int, output: Path) -> list[dict]:
         "source_views_share_one_authority": True,
         "not_real_vendor_or_independent_distribution": True,
         "sliding_ucb_is_prior_art": True,
+        "exact_cumulative_spend": exact_budget,
+        "target_spend_per_method_policy": length * 3 // 2 if exact_budget else None,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report = [
         "# 多回合 Go HTTP 证据选择对照", "",
@@ -202,14 +220,15 @@ def run(seed: int, length: int, output: Path) -> list[dict]:
         "双方共同禁止恢复写入，确认只能依赖所选来源的一次正向回读。",
         "UCB 是已有算法；学习器不读取环境标签、未选证据或物理真值。",
         "来源为同一服务端日志的两种可见性，不是独立权威。",
-        "不同策略实际成本不同；不得仅凭确认数主张等成本优势。", "",
-        "| 阶段 | 引擎 | 策略 | 案例 | 安全确认 | 不安全确认 | 未完成 | 实际成本 |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        "默认协议实际成本可能不同；--exact-budget 强制相同累计成本。",
+        "强制来源改选次数须与收益一起报告。", "",
+        "| 阶段 | 引擎 | 策略 | 案例 | 安全确认 | 不安全确认 | 未完成 | 实际成本 | 强制改选 |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for item in summary:
         report.append(f"| {item['phase']} | {item['engine']} | {item['policy']} | "
                       f"{item['cases']} | {item['safe']} | {item['unsafe']} | "
-                      f"{item['unresolved']} | {item['cost']} |")
+                      f"{item['unresolved']} | {item['cost']} | {item['forced_choices']} |")
     (output / "REPORT.md").write_text("\n".join(report) + "\n", encoding="utf-8")
     names = ("episodes.csv", "summary.csv", "protocol.json", "REPORT.md")
     (output / "SHA256SUMS.json").write_text(json.dumps({
@@ -223,8 +242,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=20261028)
     parser.add_argument("--length", type=int, default=40)
     parser.add_argument("--output", type=Path, default=Path("results/evidence_online_http"))
+    parser.add_argument("--exact-budget", action="store_true")
     args = parser.parse_args()
-    run(args.seed, args.length, args.output)
+    run(args.seed, args.length, args.output, exact_budget=args.exact_budget)
 
 
 if __name__ == "__main__":
