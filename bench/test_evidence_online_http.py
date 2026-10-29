@@ -32,6 +32,13 @@ class OnlineHTTPTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate([], 8, exact_budget=True)
 
+    def test_mutually_exclusive_budget_modes(self):
+        from bench.evidence_online_http import run
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder, self.assertRaises(ValueError):
+            run(1, 8, Path(folder), exact_budget=True, budget_cap=True)
+
     def test_incomplete_and_duplicate_pair_fail(self):
         with self.assertRaises(ValueError):
             validate([], 8)
