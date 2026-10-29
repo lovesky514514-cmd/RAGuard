@@ -52,6 +52,7 @@ class Episode:
     queries: int
     blocked_writes: int
     forced_choice: int = 0
+    skipped_query: int = 0
 
 
 def scenarios(seed: int, length: int) -> list[Scenario]:
@@ -79,11 +80,13 @@ def choice(policy: str, number: int, learner: SlidingWindowUCB) -> str:
 
 
 def run_engine(binary: Path, cases: list[Scenario], engine: str,
-               policy: str, *, exact_budget: bool = False) -> list[Episode]:
+               policy: str, *, exact_budget: bool = False,
+               budget_cap: bool = False) -> list[Episode]:
     """每个方案单独执行等价故障；学习器只能看到实际所选来源。"""
     learner = SlidingWindowUCB(CHOICES, window=12, exploration=.35)
     tracker = (ExactSpend({"cheap": 1, "quick": 2}, len(cases),
                           len(cases) * 3 // 2) if exact_budget else None)
+    remaining = len(cases) * 3 // 2 if budget_cap else None
     results = []
     for phase in PROFILES:
         segment = [case for case in cases if case.phase == phase]
@@ -95,6 +98,8 @@ def run_engine(binary: Path, cases: list[Scenario], engine: str,
                 work = Path(folder)
                 preferred = choice(policy, case.number, learner)
                 source, forced = tracker.select(preferred) if tracker else (preferred, False)
+                chosen_cost = next(item.cost for item in CHOICES if item.source == source)
+                skipped = budget_cap and remaining < chosen_cost
                 raw = raw_call("orders.create")
                 raw["task"] = f"online-{case.number}"
                 raw["intent"] = f"operation-{case.number}"
@@ -113,12 +118,19 @@ def run_engine(binary: Path, cases: list[Scenario], engine: str,
                 client.enabled = True
                 client.queried = False
                 client.drop_count = 0
-                status = engine_call(engine, case_dir, client, raw)
-                budget = client.budget_result
-                if budget is None or budget.queries != 1 or budget.sources != (source,):
-                    raise AssertionError("证据查询未遵守单来源同预算协议")
-                if budget.cost != next(item.cost for item in CHOICES if item.source == source):
-                    raise AssertionError("证据成本未正确计费")
+                if skipped:
+                    # 不主动替换来源、不猜测未提交；此回合只留下未完成状态。
+                    status = 409
+                    budget = None
+                else:
+                    status = engine_call(engine, case_dir, client, raw)
+                    budget = client.budget_result
+                    if budget is None or budget.queries != 1 or budget.sources != (source,):
+                        raise AssertionError("证据查询未遵守单来源同预算协议")
+                    if budget.cost != chosen_cost:
+                        raise AssertionError("证据成本未正确计费")
+                    if budget_cap:
+                        remaining -= budget.cost
 
                 # 独立评估器才允许读取服务端物理效果日志。
                 truth = control(origin, "effects")
@@ -132,22 +144,24 @@ def run_engine(binary: Path, cases: list[Scenario], engine: str,
                     raise AssertionError("故障注入和物理提交不一致")
                 safe = status == 200 and len(effects) == 1
                 unsafe = status == 200 and len(effects) != 1
-                observed = budget.verdict.action.value == "confirm"
-                if policy == "sliding_ucb":
-                    learner.observe(source, observed)
+                if policy == "sliding_ucb" and budget is not None:
+                    learner.observe(source, budget.verdict.action.value == "confirm")
                 results.append(Episode(
                     case.number, phase, engine, policy, source, int(case.committed),
                     len(effects), status, int(safe), int(unsafe),
                     max(0, len(effects) - 1), int(status != 200),
-                    budget.cost, budget.queries, client.blocked_recovery_writes,
-                    int(forced),
+                    budget.cost if budget else 0, budget.queries if budget else 0,
+                    client.blocked_recovery_writes, int(forced), int(skipped),
                 ))
     if tracker:
         tracker.verify()
+    if budget_cap and remaining < 0:
+        raise ValueError("累计成本超支")
     return results
 
 
-def validate(rows: list[Episode], length: int, *, exact_budget: bool = False) -> None:
+def validate(rows: list[Episode], length: int, *, exact_budget: bool = False,
+             budget_cap: bool = False) -> None:
     expected = {(engine, policy, index)
                 for engine in METHODS for policy in POLICIES
                 for index in range(length)}
@@ -160,17 +174,24 @@ def validate(rows: list[Episode], length: int, *, exact_budget: bool = False) ->
         previous = by_case.setdefault(key, row.physical_effects)
         if previous != row.physical_effects:
             raise ValueError("不同策略的物理故障不等价")
-        if row.queries != 1 or row.cost not in (1, 2):
+        if row.skipped_query:
+            if not budget_cap or row.queries != 0 or row.cost != 0 or row.status == 200:
+                raise ValueError("停止查询没有正确保留未知状态")
+        elif row.queries != 1 or row.cost not in (1, 2):
             raise ValueError("证据预算违反协议")
-    if exact_budget:
+    if exact_budget or budget_cap:
         target = length * 3 // 2
         for engine in METHODS:
             for policy in POLICIES:
-                if sum(r.cost for r in rows if r.engine == engine and r.policy == policy) != target:
-                    raise ValueError("跨策略累计成本不相等")
+                spent = sum(r.cost for r in rows if r.engine == engine and r.policy == policy)
+                if (exact_budget and spent != target) or (budget_cap and spent > target):
+                    raise ValueError("违反相同总预算约束")
 
 
-def run(seed: int, length: int, output: Path, *, exact_budget: bool = False) -> list[dict]:
+def run(seed: int, length: int, output: Path, *, exact_budget: bool = False,
+        budget_cap: bool = False) -> list[dict]:
+    if exact_budget and budget_cap:
+        raise ValueError("不能同时选择精确花费与预算上限")
     cases = scenarios(seed, length)
     with tempfile.TemporaryDirectory() as folder:
         binary = Path(folder) / ("uncertainty.exe" if os.name == "nt" else "uncertainty")
@@ -178,8 +199,9 @@ def run(seed: int, length: int, output: Path, *, exact_budget: bool = False) -> 
                        cwd=ROOT / "mock", check=True, timeout=120, capture_output=True)
         rows = [row for engine in METHODS for policy in POLICIES
                 for row in run_engine(binary, cases, engine, policy,
-                                      exact_budget=exact_budget)]
-    validate(rows, length, exact_budget=exact_budget)
+                                      exact_budget=exact_budget,
+                                      budget_cap=budget_cap)]
+    validate(rows, length, exact_budget=exact_budget, budget_cap=budget_cap)
 
     summary = []
     for phase in PROFILES:
@@ -196,6 +218,7 @@ def run(seed: int, length: int, output: Path, *, exact_budget: bool = False) -> 
                     "cost": sum(r.cost for r in part),
                     "blocked_writes": sum(r.blocked_writes for r in part),
                     "forced_choices": sum(r.forced_choice for r in part),
+                    "skipped_queries": sum(r.skipped_query for r in part),
                 })
     output.mkdir(parents=True, exist_ok=True)
     write_csv(output / "episodes.csv", [asdict(row) for row in rows])
@@ -212,6 +235,7 @@ def run(seed: int, length: int, output: Path, *, exact_budget: bool = False) -> 
         "not_real_vendor_or_independent_distribution": True,
         "sliding_ucb_is_prior_art": True,
         "exact_cumulative_spend": exact_budget,
+        "budget_cap_without_forced_substitution": budget_cap,
         "target_spend_per_method_policy": length * 3 // 2 if exact_budget else None,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     report = [
@@ -221,14 +245,16 @@ def run(seed: int, length: int, output: Path, *, exact_budget: bool = False) -> 
         "UCB 是已有算法；学习器不读取环境标签、未选证据或物理真值。",
         "来源为同一服务端日志的两种可见性，不是独立权威。",
         "默认协议实际成本可能不同；--exact-budget 强制相同累计成本。",
-        "强制来源改选次数须与收益一起报告。", "",
-        "| 阶段 | 引擎 | 策略 | 案例 | 安全确认 | 不安全确认 | 未完成 | 实际成本 | 强制改选 |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "强制来源改选次数须与收益一起报告。",
+        "预算上限消融允许不查询、保留未完成状态，原策略偏好不会强制变更。", "",
+        "| 阶段 | 引擎 | 策略 | 案例 | 安全确认 | 不安全确认 | 未完成 | 实际成本 | 强制改选 | 未查询 |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for item in summary:
         report.append(f"| {item['phase']} | {item['engine']} | {item['policy']} | "
                       f"{item['cases']} | {item['safe']} | {item['unsafe']} | "
-                      f"{item['unresolved']} | {item['cost']} | {item['forced_choices']} |")
+                      f"{item['unresolved']} | {item['cost']} | {item['forced_choices']} | "
+                      f"{item['skipped_queries']} |")
     (output / "REPORT.md").write_text("\n".join(report) + "\n", encoding="utf-8")
     names = ("episodes.csv", "summary.csv", "protocol.json", "REPORT.md")
     (output / "SHA256SUMS.json").write_text(json.dumps({
@@ -243,8 +269,10 @@ def main() -> None:
     parser.add_argument("--length", type=int, default=40)
     parser.add_argument("--output", type=Path, default=Path("results/evidence_online_http"))
     parser.add_argument("--exact-budget", action="store_true")
+    parser.add_argument("--budget-cap", action="store_true")
     args = parser.parse_args()
-    run(args.seed, args.length, args.output, exact_budget=args.exact_budget)
+    run(args.seed, args.length, args.output, exact_budget=args.exact_budget,
+        budget_cap=args.budget_cap)
 
 
 if __name__ == "__main__":
