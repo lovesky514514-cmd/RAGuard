@@ -57,3 +57,13 @@ class AuditTests(unittest.TestCase):
         got = inspect(CONTEXT, PROVER, Reading(Label.ABSENT, (COMMIT,)), 1)
         self.assertTrue(got.terminal)
         self.assertEqual(got.action, Decision.STOP)
+
+    def test_nonexecution_claim_must_not_masquerade_as_commit(self):
+        got = inspect(CONTEXT, PROVER, Reading(Label.COMMIT, (NONEXEC,)), 1)
+        self.assertEqual(got.action, Decision.STOP)
+        self.assertTrue(got.terminal)
+
+    def test_same_kind_proofs_cannot_claim_hard_conflict(self):
+        got = inspect(CONTEXT, PROVER, Reading(Label.HARD_CONFLICT, (COMMIT, COMMIT)), 1)
+        self.assertEqual(got.action, Decision.STOP)
+        self.assertTrue(got.terminal)
