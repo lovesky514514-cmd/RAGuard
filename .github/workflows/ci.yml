@@ -127,6 +127,17 @@ jobs:
           path: results/evidence_sensitivity_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Four-factor evidence audit and planning study
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_meta_experiment --seeds 71,72,73 --budgets 2,3,4 --cases 80 --output results/evidence_meta_ci
+      - name: Archive four-factor planning evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-meta-ci
+          path: results/evidence_meta_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
