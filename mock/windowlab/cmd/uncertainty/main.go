@@ -17,9 +17,11 @@ func send(w http.ResponseWriter, value any) {
  _ = json.NewEncoder(w).Encode(value)
 }
 
-func handler(ttl int64) (http.Handler,error) {
+func handler(ttl int64, mode string) (http.Handler,error) {
  var clock atomic.Int64
  server,err:=windowlab.NewServer(ttl,clock.Load)
+ if err!=nil{return nil,err}
+ view,err:=windowlab.NewEvidenceView(server,mode)
  if err!=nil{return nil,err}
  gate:=&windowlab.HoldGate{}
  mux:=http.NewServeMux()
@@ -50,6 +52,8 @@ func handler(ttl int64) (http.Handler,error) {
   if r.Method!=http.MethodGet {http.Error(w,"method",405);return}
   send(w,gate.State())
  })
+ mux.HandleFunc("/v1/evidence/commit",server.EvidenceHTTP)
+ mux.Handle("/v1/evidence/view",view)
  mux.Handle("/v1/lab/effects",server)
  mux.Handle("/v1/execute",gate.Wrap(server))
  return mux,nil
@@ -58,10 +62,11 @@ func handler(ttl int64) (http.Handler,error) {
 func main() {
  addr:=flag.String("addr","127.0.0.1:8187","loopback address")
  ttl:=flag.Int64("ttl",6,"retention ticks")
+ mode:=flag.String("evidence-mode","matched","evidence visibility profile")
  flag.Parse()
  host,_,err:=net.SplitHostPort(*addr)
  if err!=nil || host!="127.0.0.1" {log.Fatal("must bind 127.0.0.1")}
- h,err:=handler(*ttl)
+ h,err:=handler(*ttl,*mode)
  if err!=nil {log.Fatal(err)}
  log.Fatal(http.ListenAndServe(*addr,h))
 }

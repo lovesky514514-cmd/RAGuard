@@ -49,6 +49,84 @@ jobs:
           path: results/window_uncertainty_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Evidence budget synthetic stress test
+        if: runner.os == 'Linux'
+        run: |
+          python -m bench.evidence_budget_experiment --train 400 --test 300 --seed 20261026 --output results/evidence_budget_ci
+      - name: Archive evidence budget comparison
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-budget-ci
+          path: results/evidence_budget_ci/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Real HTTP evidence comparison
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_http_live --output results/evidence_http_ci
+      - name: Archive HTTP evidence comparison
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-http-ci
+          path: results/evidence_http_ci/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Online evidence drift baseline
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_online_experiment --length 400 --seed 20261028 --output results/evidence_online_ci
+      - name: Archive online evidence drift results
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-online-ci
+          path: results/evidence_online_ci/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Longitudinal real HTTP source comparison
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_online_http --length 40 --seed 20261028 --output results/evidence_online_http_ci
+      - name: Archive longitudinal HTTP evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-online-http-ci
+          path: results/evidence_online_http_ci/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Exactly matched cumulative cost HTTP comparison
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_online_http --length 40 --seed 20261029 --exact-budget --output results/evidence_exact_spend_ci
+      - name: Archive matched-cost HTTP evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-exact-spend-ci
+          path: results/evidence_exact_spend_ci/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Matched cumulative budget cap without forced substitution
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_online_http --length 40 --seed 20261029 --budget-cap --output results/evidence_budget_cap_ci
+      - name: Archive budget cap HTTP evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-budget-cap-ci
+          path: results/evidence_budget_cap_ci/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Multi-seed budget sensitivity smoke test
+        if: runner.os == 'Linux'
+        run: python -m bench.evidence_budget_sensitivity --seeds 41,42 --caps 8,12 --length 8 --output results/evidence_sensitivity_ci
+      - name: Archive budget sensitivity results
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-sensitivity-ci
+          path: results/evidence_sensitivity_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
