@@ -50,10 +50,13 @@ def inspect(context: Context, source: Source, reading: Reading, now: int,
     """冲突或来源越权一律停止；普通空回读和推断分歧不能证明未执行。"""
     if not isinstance(reading, Reading) or not isinstance(reading.label, Label):
         return Audit(Label.PENDING, Decision.STOP, True, "不认识的证据响应")
-    if reading.label == Label.HARD_CONFLICT and len(reading.proofs) < 2:
+    if (reading.label == Label.HARD_CONFLICT
+            and {proof.kind for proof in reading.proofs}
+            != {Kind.COMMITTED, Kind.FINAL_NON_EXECUTION}):
         return Audit(reading.label, Decision.STOP, True, "冲突缺少可核验事实")
-    if reading.label == Label.COMMIT and len(reading.proofs) != 1:
-        return Audit(reading.label, Decision.STOP, True, "提交回执数量异常")
+    if (reading.label == Label.COMMIT and (len(reading.proofs) != 1
+            or reading.proofs[0].kind != Kind.COMMITTED)):
+        return Audit(reading.label, Decision.STOP, True, "提交回执命题类型错误")
     if reading.label not in (Label.COMMIT, Label.HARD_CONFLICT) and reading.proofs:
         return Audit(reading.label, Decision.STOP, True, "非证明响应夹带证明")
     if source.proof_valid_through < now and reading.proofs:
