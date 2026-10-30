@@ -18,7 +18,7 @@ class SensitivityTests(unittest.TestCase):
                     for policy in ("fixed_cheap", "fixed_quick", "alternate", "sliding_ucb"):
                         rows.append({"seed": seed, "cap": 12, "phase": phase,
                                      "engine": engine, "policy": policy, "safe": value,
-                                     "cost": 10, "skipped_queries": 1, "unsafe": 0})
+                                     "cost": 10, "unresolved": 2, "skipped_queries": 1, "unsafe": 0})
         result = aggregate(rows, (41, 42), (12,))
         deltas = paired_differences(rows, (41, 42), (12,))
         self.assertEqual(len(deltas), 24)
