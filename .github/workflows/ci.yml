@@ -138,6 +138,8 @@ jobs:
           path: results/evidence_meta_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Evidence audit finite falsification
+        run: python -m bench.evidence_audit_falsification
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
