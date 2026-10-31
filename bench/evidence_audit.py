@@ -59,8 +59,8 @@ def inspect(context: Context, source: Source, reading: Reading, now: int,
         return Audit(reading.label, Decision.STOP, True, "提交回执命题类型错误")
     if reading.label not in (Label.COMMIT, Label.HARD_CONFLICT) and reading.proofs:
         return Audit(reading.label, Decision.STOP, True, "非证明响应夹带证明")
-    if source.proof_valid_through < now and reading.proofs:
-        return Audit(Label.STALE, Decision.STOP, False, "来源证明授权窗口已过期")
+    if type(now) is not int or now < context.server_tick_upper or now < 0:
+        return Audit(reading.label, Decision.STOP, True, "服务端时间上界不能回退")
 
     for proof in reading.proofs:
         if proof.kind == Kind.COMMITTED and not source.can_confirm:
@@ -69,11 +69,12 @@ def inspect(context: Context, source: Source, reading: Reading, now: int,
             return Audit(reading.label, Decision.STOP, True, "来源没有未执行证明能力")
         if proof.kind not in (Kind.COMMITTED, Kind.FINAL_NON_EXECUTION) or not proof.final:
             return Audit(reading.label, Decision.STOP, True, "证明不具备终局性")
-        validation = decide(replace(context, server_tick_upper=now), (proof,))
-        if validation.reason in ("发行主体不可信", "业务身份、作用域或代次不一致"):
-            return Audit(reading.label, Decision.STOP, True, validation.reason)
-        if validation.reason == "权威证据有效期无法覆盖当前时刻":
-            return Audit(Label.STALE, Decision.STOP, False, validation.reason)
+        if not proof.authenticated or proof.authority != context.authority:
+            return Audit(reading.label, Decision.STOP, True, "发行主体不可信")
+        if (proof.identity != context.identity or proof.scope != context.scope
+                or proof.fingerprint != context.fingerprint
+                or proof.generation != context.generation):
+            return Audit(reading.label, Decision.STOP, True, "业务身份、作用域或代次不一致")
 
     merged = previous + reading.proofs
     kinds = {proof.kind for proof in merged}
@@ -81,6 +82,11 @@ def inspect(context: Context, source: Source, reading: Reading, now: int,
         return Audit(Label.HARD_CONFLICT, Decision.STOP, True, "同一请求出现矛盾的权威终局事实")
     if reading.label == Label.HARD_CONFLICT:
         return Audit(reading.label, Decision.STOP, True, "冲突事实无法验证或互斥")
+
+    # 时间窗口限制证明用于当前决策，不覆盖身份错误或历史事实矛盾。
+    if (reading.proofs and (source.proof_valid_through < now
+                            or any(proof.valid_until < now for proof in reading.proofs))):
+        return Audit(Label.STALE, Decision.STOP, False, "当前证据授权窗口已经过期")
     if reading.label == Label.COMMIT:
         return Audit(reading.label, Decision.CONFIRM, True, "权威提交已核验", merged)
     return Audit(reading.label, Decision.STOP, False,
