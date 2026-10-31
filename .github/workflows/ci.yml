@@ -151,6 +151,17 @@ jobs:
           path: results/evidence_audit_http_ci/
           if-no-files-found: error
           retention-days: 30
+      - name: Audited persistent recovery over real Go HTTP
+        if: runner.os == 'Linux'
+        run: python -m bench.audited_recovery_http --output results/audited_recovery_http_ci
+      - name: Archive audited persistent recovery evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: audited-recovery-http-ci
+          path: results/audited_recovery_http_ci/
+          if-no-files-found: error
+          retention-days: 30
       - name: Go race check (Linux)
         if: runner.os == 'Linux'
         working-directory: mock
