@@ -22,8 +22,12 @@ def files():
 
 
 def digest(path: Path) -> str:
-    return sha256(path.read_bytes()).hexdigest()
-
+    content = path.read_bytes()
+    # Git 在 Windows 检出时可能改变文本换行，哈希统一采用 LF。
+    # 二进制文件始终严格按照原始字节校验。
+    if path.suffix.lower() != '.exe':
+        content = content.replace(b'\r\n', b'\n')
+    return sha256(content).hexdigest()
 
 def build():
     return {str(name).replace('\\', '/'): digest(ROOT / name) for name in files()}
