@@ -1,7 +1,6 @@
-"""Experimental cross-observation evidence invariants; audit-only, never dispatches writes.
+"""跨回读证据一致性审计；仅供研究检查，不发起外部写操作。
 
-The invariants are **provider-declared**: neither uniqueness of effect IDs nor
-monotonic versions may be inferred from response field names alone.
+不依据字段名称擅自推定效果标识唯一性或版本单调性；须由服务方明确承诺。
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ from .evidence import (EvidenceContract, EvidenceDecision,
 
 @dataclass(frozen=True)
 class SemanticPolicy:
-    """Enable checks only after validating the provider's identity/version semantics."""
+    """仅在核实服务方的身份与版本语义后开启相应约束。"""
 
     unique_effect_within_tool: bool = False
     monotonic_snapshot_version: bool = False
@@ -43,11 +42,10 @@ def audit_stream(
     now: float,
     policy: SemanticPolicy,
 ) -> Audit:
-    """Check chronological *readback arrivals* against explicit provider guarantees.
+    """根据服务方声明的保证审计按到达顺序排列的回读。
 
-    The existing whole-history assess_evidence remains the strong reference
-    baseline. An alert means manual review/safe stop, not proof of misconduct.
-    Missing/unverified evidence is excluded from temporal invariant state.
+    保留全历史证据判定作为强对照；警告只要求人工审查或安全停止。
+    未通过验证的证据不得进入版本单调性状态。
     """
     seen: dict[str, list[EvidenceObservation]] = {}
     states: dict[str, tuple[int, str]] = {}
@@ -89,7 +87,7 @@ def audit_stream(
                                     event.business_ref))
             effect_owners.setdefault(key, event.business_ref)
 
-        # Do not let a suspect rollback overwrite the greatest known version.
+        # 可疑的版本回退不能覆盖已经记录的最高版本。
         if previous is None or event.version > previous[0]:
             states[event.business_ref] = (event.version, event.effect_id)
     return Audit(admitted, unadmitted, tuple(alerts), legacy_conflicts)
