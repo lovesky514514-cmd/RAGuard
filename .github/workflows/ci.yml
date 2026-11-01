@@ -38,7 +38,7 @@ jobs:
           cd mock
           go test ./...
           go vet ./...
-          test -z "$(gofmt -l windowlab/evidence.go windowlab/cmd/uncertainty/main.go)"
+          test -z "$(gofmt -l windowlab/evidence.go windowlab/cmd/uncertainty/main.go windowlab/evidence_test.go windowlab/inflight_test.go)"
       - name: Paired uncertainty experiment
         if: runner.os == 'Linux'
         run: |
