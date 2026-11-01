@@ -1,7 +1,6 @@
-"""Frozen, mutation-labelled synthetic traces for evidence-contract drift.
+"""生成固定的证据契约漂移合成轨迹，用于受控负面实验。
 
-No Provider credentials, network calls, or physical writes are used. Reports
-must not be described as a deployed anomaly detector or novel algorithm.
+不使用服务商凭据、外部网络或真实物理写入；结果不能视为已部署异常检测器。
 """
 from __future__ import annotations
 
