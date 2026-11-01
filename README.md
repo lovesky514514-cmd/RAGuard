@@ -1,68 +1,85 @@
 # RAGuard
 
-**面向工具调用型 AI Agent 的可验证副作用恢复与安全重试研究框架。**
+**面向工具调用型 AI Agent 的安全恢复与外部副作用评测框架**
 
-RAGuard 使用 **Python** 管理可信业务身份、持久化执行账本和恢复决策，使用 **Go** 构建真实 HTTP 故障沙箱，独立记录外部物理效果。研究重点是：工具调用超时、回执丢失、请求晚提交或幂等窗口过期时，如何依据权威证据判断**确认、停止或允许重新执行**。
+RAGuard 是一个 Python + Go 开源研究项目：Python 负责可信业务身份、持久化执行账本与恢复；Go 负责隔离 HTTP 故障注入、有限幂等窗口和独立物理效果记录。它研究的核心问题是：**一次工具调用没有收到回执，并不代表外部操作没有执行。**
 
-**当前研究状态：** 已建立独立 B5 强基线及真实 HTTP 配对实验；在相同证据条件下，现有结果尚未证明 RAGuard 优于 B5。证据能力与有限预算查询（ECF）仍是隔离研究原型，不能宣称生产级 exactly-once。
+> RAGuard 不是生产级支付/订单网关，也不保证通用 exactly-once。当前与独立持久化 B5 强基线的同信息对照未证明独有算法优势。
 
-[已验证研究基线（2.0）](https://github.com/lovesky514514-cmd/RAGuard/tree/2.0) · [ECF 研究分支](https://github.com/lovesky514514-cmd/RAGuard/tree/research/contract-evidence) · [研究问题记录](https://github.com/lovesky514514-cmd/RAGuard/blob/2.0/docs/%E9%97%AE%E9%A2%98%E8%AE%B0%E5%BD%95.md)
+## 从哪里开始
 
-## Windows 快速启动
+| 你想做什么 | 建议入口 |
+| --- | --- |
+| 使用稳定研究原型 | 当前 `main` 的说明与 [已验证研究基线](https://github.com/lovesky514514-cmd/RAGuard/tree/2.0) |
+| 阅读最新论文 | [SoftwareX 英文论文初稿](https://github.com/lovesky514514-cmd/RAGuard/blob/research/softwarex-submission/research/SoftwareX_manuscript.md) |
+| 独立复现实验 | [完整复现协议](https://github.com/lovesky514514-cmd/RAGuard/blob/research/softwarex-submission/research/SoftwareX_reproducibility.md) |
+| 查看最新研究代码 | [SoftwareX 研究分支](https://github.com/lovesky514514-cmd/RAGuard/tree/research/softwarex-submission) |
+| 检查代码可读性与规范 | [仓库维护分支](https://github.com/lovesky514514-cmd/RAGuard/tree/maintenance/repository-quality) |
+| 反馈问题 | [Issues](https://github.com/lovesky514514-cmd/RAGuard/issues) |
 
-直接启动需要 **Python 3.11+**；随包已提供 Windows x64 Go 沙箱程序，启动、实验和日常检查均不强制安装 Go。若要自行重新编译沙箱、运行 Go 源码单元测试和 `go vet`，需另行安装 **Go 1.21+**。安装 Python 时请启用 PATH，并重新打开终端。项目核心模块无需额外安装第三方 Python 包。
+**注意：** `main`、研究分支和维护分支并非完全相同的代码状态。科研复现时请使用论文指定的完整提交 SHA，并记录 Python / Go 版本，不要将不同分支的实验输出混用。
 
-1. **解压全部文件**，不要在压缩包预览窗口里双击。
-2. 双击根目录的 **`启动.bat`**，自动运行经过哈希校验的内置沙箱、启动网关并执行订单演示。
-3. 启动后，窗口保持打开；按 `Ctrl+C` 关闭服务。出现错误时窗口不会自动关闭。
-4. 双击 **`检查.bat`** 执行 Python、编码及内置沙箱验证；双击 **`实验.bat`** 运行真实故障试验。未安装 Go 时，Go 源码测试和静态检查会被明确标为未执行。
+## 主要能力
 
-如未能启动，请将 **`logs/运行日志.txt`** 发给开发者。已经明确的问题与修复处理都记录在 **`docs/问题记录.md`**，其他文件不再重复记录排错历史。
+| 组件 | 功能 | 安全边界 |
+| --- | --- | --- |
+| 可信业务身份 | 将参数、主体和业务引用稳定绑定 | 防止任务重新规划引入重复写操作 |
+| 持久副作用账本 | 外部写入前记录意图与状态 | 超时不能视为未执行 |
+| 证据感知恢复 | 对正向回读、已知执行契约与重试权限分开处理 | 回读空白不足以授权重发 |
+| Go HTTP 沙箱 | 模拟请求丢失、晚提交、窗口到期和作用域变化 | 仅在本地回环端口运行 |
+| 公平基线 | B5 与 RAGuard 使用匹配的业务身份和证据 | 物理真值仅由评估器访问 |
+| CI 与复现 | 运行 Python/Go 回归、保存原始数据和 SHA-256 | 受控实验不代表真实厂商安全保证 |
 
-> 端口：Go 沙箱 `127.0.0.1:8181`；Python 网关 `127.0.0.1:8088`。端口被占用时程序会报错退出，不接管其他服务。
+## Windows 快速体验
+
+安装 Python **3.11+** 并配置 PATH。普通 Windows x64 演示使用仓库中附带、经过 SHA-256 校验的 Go 沙箱，不要求额外安装 Go。源码编译和完整研究实验建议使用 Go **1.23**（与研究 CI 一致）。
+
+1. 下载并完整解压仓库，不要直接从压缩包预览界面启动。
+2. 双击 `启动.bat`，程序将进行环境检查、启动沙箱与网关，并运行本地演示。
+3. 双击 `检查.bat` 执行环境与编码校验，双击 `实验.bat` 运行基础实验。
+4. 出错时查看本机日志；不要公开包含设备路径、令牌或私有数据的日志。
+
+演示端口为 Go `127.0.0.1:8181`、Python 网关 `127.0.0.1:8088`。端口冲突会报告错误，不会擅自关闭其他程序。
 
 ## Linux / macOS
 
 ```bash
-sh scripts/start.sh          # 启动演示
-sh scripts/check.sh          # 检查代码
-sh scripts/run_smoke.sh      # 故障冒烟实验
+sh scripts/start.sh
+sh scripts/check.sh
+sh scripts/run_smoke.sh
 ```
 
-跨平台无交互启动检查（完成演示后自动关闭进程）：
+自动启动、验证并有序退出：
 
 ```bash
 python scripts/launcher.py start --self-test
 ```
 
-## 核心目录
+## 研究复现与实际结果
 
-| 路径 | 内容 |
-|---|---|
-| `raguard/` | 业务身份校验、持久账本、执行与恢复策略、HTTP 网关 |
-| `mock/` | Go 工具沙箱、真实连接断开与副作用真值 |
-| `bench/` | B0–B4 对照、故障矩阵、跨步骤 Saga、统计与评估 |
-| `tests/` | 安全属性、并发、端到端与启动故障回归 |
-| `scripts/` | 启动器、自检与编码检查 |
-| `results/` | 研究用探索结果（不等于论文正式数据） |
-| `logs/` | 本机运行日志（生成文件不纳入源码交付） |
-| `docs/问题记录.md` | 唯一持续更新的问题、修复与验证记录 |
+最新研究提供独立 DurableBaseline（B5）、真实 Go HTTP 物理日志和审计器。隔离恢复执行链按照 2 引擎 × 2 故障 × 11 证据状态完成了 **44 个受控场景**：观察到 2 次安全确认、42 次未完成、0 次不安全确认、0 次恢复阶段新增真实 HTTP 写入请求。**两套引擎在该实验中持平**。
 
-设计边界参见 `docs/DESIGN.md`，实验方法参见 `docs/EXPERIMENTS.md`，API 请求见 `docs/USAGE.md`，安全约束参见 `docs/SECURITY.md`。
+该协议使用共同的研究适配器禁止二次写入；不存在真实第三方签名验证或不可绕过的服务端执行屏障。结果不能解释为 RAGuard 优于 B5，更不能解释为生产级零风险。
 
-## 开源许可
+可从 [完整复现说明](https://github.com/lovesky514514-cmd/RAGuard/blob/research/softwarex-submission/research/SoftwareX_reproducibility.md) 获得原始 CSV、实验协议、哈希文件和运行命令。论文投稿工作将独立进行，正式 SCI 录用不作保证。
 
-源代码按 [Apache License 2.0](LICENSE) 许可，版权说明见 [NOTICE](NOTICE)。
-公开的是研究沙箱代码，不是经过生产安全认证的第三方 API 代理。
-随仓库提供的 Windows 沙箱程序由 `mock/` 的 Go 代码构建，使用前仍需检查 SHA-256。
-发布前执行 `python scripts/check_public_release.py` 和 `python scripts/verify_manifest.py`。
+## 仓库结构
 
-## GitHub 源码与安全
+```text
+raguard/   业务身份、持久账本与恢复决策
+mock/      Go HTTP 沙箱、故障与物理效果真值
+bench/     强基线、对照实验、证据预算与统计
+tests/     安全属性、持久化与端到端回归
+scripts/   启动、自检、发布检查与哈希校验
+docs/      使用说明、系统设计、安全边界与问题记录
+research/  研究方案、论文草稿和复现实验（研究分支）
+results/   参考实验数据和本地临时结果
+```
 
-仓库不提交 `data/`、`logs/` 或本机生成的实验结果。`bin/raguard-mock.exe` 是本地 Windows x64 演示依赖，必须与同目录哈希文件一起保留。当前随仓库的 `results/reference_*` 是**探索性参考数据**，不是 Windows 用户本次生成的实验结果。
+文档入口：[使用说明](docs/USAGE.md) · [设计说明](docs/DESIGN.md) · [安全边界](docs/SECURITY.md) · [实验协议](docs/EXPERIMENTS.md) · [唯一问题记录](docs/问题记录.md)。
 
-## 科研状态
+## 代码风格与贡献方式
 
-本地模拟实验已经具备可运行的故障对照，但还缺真实多 Agent 跨域验证与正式统计实验。已有探索中，RAGuard **没有优于强幂等基线 B3**；不可将现有数据声称为论文已验证的创新优势。
+源码采用**简体中文简短注释**、UTF-8 无 BOM；避免装饰性的长等号或横线分隔；Go 代码遵循 gofmt。最新维护分支提供可读性检查与更详细的研究入口。发现问题时提交最小复现、环境版本与相关测试；不要把计划中的实验写成通过。
 
-源文件注释以简体中文为主，UTF-8 无 BOM。单个工具的测试通过不代表真实第三方 API 可以保证 exactly-once。
+仓库代码采用 [Apache License 2.0](LICENSE)，归属与许可见 [NOTICE](NOTICE)。切勿上传个人路径、私有邮箱、API 密钥、支付凭证或客户数据。默认示例仅使用本地模拟工具。
