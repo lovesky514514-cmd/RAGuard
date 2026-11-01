@@ -58,7 +58,16 @@ class LauncherTests(unittest.TestCase):
              patch.object(launcher, "start") as start, \
              patch.object(launcher, "record") as record:
             launcher.check()
-            self.assertEqual(commands.call_count, 4)
+            expected = {
+                "scripts/check_utf8.py",
+                "scripts/check_code_style.py",
+                "scripts/check_public_release.py",
+                "scripts/verify_manifest.py",
+            }
+            invoked = {str(arg) for call in commands.call_args_list
+                       for arg in call.args[0]}
+            self.assertTrue(expected.issubset(invoked))
+            self.assertEqual(commands.call_count, 7)
             start.assert_called_once_with(self_test=True)
             self.assertTrue(any("未执行" in item.args[0] for item in record.call_args_list))
 

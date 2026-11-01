@@ -181,6 +181,9 @@ def check() -> None:
     python = [sys.executable, "-X", "utf8"]
     commands = [
         python + ["scripts/check_utf8.py"],
+        python + ["scripts/check_code_style.py"],
+        python + ["scripts/check_public_release.py"],
+        python + ["scripts/verify_manifest.py"],
         python + ["-m", "compileall", "-q", "raguard", "tests", "bench", "audit", "scripts"],
         python + ["-m", "unittest", "discover", "-s", "tests", "-v"],
         python + ["-m", "unittest", "discover", "-s", "bench", "-p", "test_*.py", "-v"],
