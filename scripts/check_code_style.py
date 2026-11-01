@@ -34,6 +34,18 @@ def scan(path: Path) -> tuple[list[str], bool]:
                 problems.append(f"{rel}:1 文件头说明过长或未闭合")
         if len(lines[first]) > 200:
             problems.append(f"{rel}:1 文件头说明行过长")
+    # 文件开头连续注释过长也会影响读者快速定位代码入口。
+    header_lines = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#!") or stripped.startswith("# -*-"):
+            continue
+        if stripped.startswith(("#", "//")):
+            header_lines += 1
+            continue
+        break
+    if header_lines > 12:
+        problems.append(f"{rel}:1 文件开头连续注释超过 12 行")
     meaningful = [line.strip() for line in lines
                   if line.strip().startswith(("#", "//"))]
     has_chinese = bool(CHINESE.search("\n".join(meaningful[:200]) +
@@ -60,6 +72,7 @@ def check() -> int:
             elif path.suffix in {".py", ".go"}:
                 uncovered.append(path.relative_to(ROOT).as_posix())
     print(f"检查 {source_count} 个源码文件，其中 {chinese_count} 个含中文注释或头部说明")
+    print("中文注释覆盖为提示指标，不代表每个模块的关键逻辑已经得到解释")
     if uncovered:
         print("尚待增加中文说明的文件：", ", ".join(uncovered[:15]))
     for error in errors:
