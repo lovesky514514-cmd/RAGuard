@@ -23,6 +23,7 @@ jobs:
         shell: bash
         run: |
           python scripts/check_utf8.py
+          python scripts/check_code_style.py
           python scripts/check_public_release.py
           python scripts/verify_manifest.py
           python -m compileall -q raguard bench tests audit scripts
