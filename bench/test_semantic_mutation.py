@@ -1,4 +1,4 @@
-"""Regression and negative cases; never touches the runtime gateway."""
+"""证据契约漂移的回归与负面测试，不接入正式 Gateway。"""
 import tempfile
 import unittest
 from pathlib import Path
