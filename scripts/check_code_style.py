@@ -25,10 +25,13 @@ def scan(path: Path) -> tuple[list[str], bool]:
             problems.append(f"{rel}:{index} 存在长装饰分隔线")
     first = next((i for i, value in enumerate(lines) if value.strip()), None)
     if first is not None and path.suffix == ".py" and DOC_OPEN.match(lines[first].strip()):
-        tail = next((i for i in range(first + 1, len(lines))
-                     if '"""' in lines[i] or "'''" in lines[i]), None)
-        if tail is not None and tail - first + 1 > 12:
-            problems.append(f"{rel}:1 文件头说明超过 12 行")
+        opener = '"""' if '"""' in lines[first] else "'''"
+        # 单行 docstring 已经闭合，不得将后续函数说明误判为文件头。
+        if lines[first].count(opener) < 2:
+            tail = next((i for i in range(first + 1, len(lines))
+                         if opener in lines[i]), None)
+            if tail is None or tail - first + 1 > 12:
+                problems.append(f"{rel}:1 文件头说明过长或未闭合")
         if len(lines[first]) > 200:
             problems.append(f"{rel}:1 文件头说明行过长")
     meaningful = [line.strip() for line in lines
