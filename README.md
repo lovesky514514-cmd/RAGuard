@@ -2,53 +2,99 @@
 
 **面向工具调用型 AI Agent 的安全恢复与可复现 HTTP 故障评测框架**
 
-Python 负责可信业务身份、持久化账本与恢复策略，Go 提供隔离故障服务及独立物理效果日志。核心问题是：**工具超时，并不意味着外部操作没有提交**。本项目研究如何在未知提交、回执丢失、幂等窗口到期等情况下依据证据安全确认或停止。
+RAGuard 是 Python + Go 科研原型。Python 负责可信业务身份、SQLite 持久化执行账本、证据回读和恢复决策；Go 提供仅在本地运行的 HTTP 故障沙箱、有限幂等窗口及独立物理副作用真值。
 
-> **研究边界：** 本仓库不是生产级支付/订单网关，不保证通用 exactly-once；相同证据能力下，现有实验未证明 RAGuard 优于独立持久化 B5 强基线。
+**研究的问题：一次工具调用超时，并不等于外部操作没有发生。** 例如 Agent 请求创建订单后网络断开，直接再次执行可能产生第二次订单。RAGuard 通过稳定的业务身份、写前登记、可信回读和保守停止，研究如何避免错误确认与无证据重发。
 
-[英文论文初稿](research/SoftwareX_manuscript.md) · [实验复现](research/SoftwareX_reproducibility.md) · [系统设计](docs/DESIGN.md) · [安全边界](docs/SECURITY.md)
+> **重要边界**：本仓库不是生产级支付或订单网关，不保证通用 exactly-once。现有同信息实验**没有证明 RAGuard 优于独立持久化 B5 强基线**。安全停止、低错误率及测试通过均不能解释为真实生产环境下的安全认证。
 
-## 功能与研究价值
+## 快速导航
 
-| 组件 | 作用 | 特别说明 |
+| 需求 | 文档或入口 |
+| --- | --- |
+| 先运行一次本地演示 | [使用说明](docs/USAGE.md) |
+| 理解模块、业务身份与恢复状态 | [设计说明](docs/DESIGN.md) |
+| 了解禁止重发、补偿与信任前提 | [安全边界](docs/SECURITY.md) |
+| 检查实验设计与对照指标 | [实验协议](docs/EXPERIMENTS.md) |
+| 独立复现实验并核对原始数据 | [复现协议](research/SoftwareX_reproducibility.md) |
+| 阅读论文初稿及科研定位 | [论文初稿](research/SoftwareX_manuscript.md) · [研究定位](research/SoftwareX_positioning.md) |
+| 阅读全部已知问题与验证状态 | [问题记录](docs/问题记录.md) |
+| 修改或评审代码 | [代码规范](CODING_STANDARDS.md) |
+
+## 核心机制
+
+| 模块 | 作用 | 必须守住的边界 |
 | --- | --- | --- |
-| Trusted identity | 将业务引用与参数、主体绑定 | 不允许 Agent 自由改写业务身份 |
-| Persistent ledger | 写入前记录意图、未知状态与执行代次 | 回执丢失不代表未执行 |
-| Go fault sandbox | 模拟提交前断开、提交后丢回执、延迟提交与幂等窗口 | 只接本地回环 |
-| Evidence audit | 审计来源权限、身份、时效及冲突 | 回环信任不等于数字签名 |
-| Paired benchmarks | 独立 B5、RAGuard 和物理效果 oracle 配对评分 | oracle 不进入恢复决策 |
+| 可信业务身份 | 绑定主体、业务引用和参数，拒绝通过改步骤名绕过去重 | 身份来自可信入口，不能由 Agent 任意声明 |
+| 持久执行账本 | 外部写操作之前登记意图、状态和执行代次 | 超时、异常或进程重启不意味着未提交 |
+| 证据感知恢复 | 检查回执、正向回读及执行契约，选择确认、等待或停止 | 404、空回读及无响应不是“未执行”证明 |
+| 安全重试 | 仅在已登记服务契约允许时重试 | 不为了提高成功率盲目重发危险写操作 |
+| 人工授权补偿 | 在依赖与状态检查通过后补偿已登记操作 | 补偿失败不能自动假设已回滚 |
+| Go 故障沙箱 | 构造提交前断开、提交后回执丢失、晚提交与 TTL 等条件 | 默认仅监听 127.0.0.1，不连接生产业务 |
+| 实验评估 | 对独立强基线和 RAGuard 使用配对条件、独立物理效果日志 | 评估器真值不得进入恢复策略 |
 
-## 快速开始
+## 目录说明
 
-运行环境：Python **3.11+**。从源码构建沙箱、复现实验建议安装 Go **1.23**（与 CI 一致）。Windows x64 演示附带带校验值的沙箱可执行文件，普通使用不强制安装 Go。
-
-```bash
-git clone https://github.com/lovesky514514-cmd/RAGuard.git
-cd RAGuard
-git checkout maintenance/repository-quality
-python scripts/check_public_release.py
-python scripts/verify_manifest.py
+```text
+raguard/    Python 网关：业务身份、账本、恢复决策、HTTP 入口
+mock/       Go HTTP 故障服务及独立物理副作用记录
+bench/      B5 等对照、配对实验、证据审计和统计
+tests/      安全性质、进程恢复、并发及端到端测试
+scripts/    启动、自检、编码检查、隐私扫描、哈希验证
+docs/       使用说明、设计、安全边界与唯一问题记录
+research/   论文初稿、科研定位、复现和投稿验收
+results/    固定参考结果；本地新生成数据不默认提交
+bin/        Windows 演示所需的带哈希校验沙箱
 ```
 
-**Windows**：双击 `启动.bat` 运行演示；`检查.bat` 检查环境；`实验.bat` 运行基础故障实验。遇到错误可查看日志，不要公开包含本机路径、令牌或私有数据的日志。
+具体文件和模块的解释以源码及对应文档为准；不要仅根据目录名推断测试已完成。
 
-**Linux / macOS**：`sh scripts/start.sh`、`sh scripts/check.sh`、`sh scripts/run_smoke.sh`。
+## 运行环境
 
-演示服务只监听回环接口，Go 默认 `127.0.0.1:8181`，Python 网关默认 `127.0.0.1:8088`。实验服务使用独立临时端口，不连接真实业务系统。
+| 用途 | 要求 |
+| --- | --- |
+| Python 网关与常规检查 | Python 3.11 或更高版本 |
+| 从源码编译 Go 沙箱、研究复现 | Go 1.23（与当前研究 CI 工具链保持一致） |
+| Windows x64 普通演示 | 随包且校验通过的本地 Go 沙箱；通常不必单独安装 Go |
+| 网络 | 只需本机回环接口；Go 默认 127.0.0.1:8181，Python 默认 127.0.0.1:8088 |
 
-## 学术复现
+所有命令都应从**仓库根目录**执行。不要在真实支付、订单、邮箱或用户生产系统中做故障注入。
 
-在仓库根目录运行：
+### Windows
+
+1. 完整下载并解压工程，不要在 ZIP 预览界面直接运行批处理。
+2. 双击 `启动.bat` 进行演示；双击 `检查.bat` 做环境自检；双击 `实验.bat` 运行基础实验。
+3. 如有报错，先看命令窗口及本地日志。端口被其他程序占用时应停止启动并报告冲突，而不是强行关闭其他程序。
+4. 研究源码编译和完整 Go 测试需要另外安装 Go；普通演示不等于完整学术复现。
+
+### Linux / macOS
+
+```bash
+sh scripts/start.sh
+sh scripts/check.sh
+sh scripts/run_smoke.sh
+```
+
+需要自动启动、做基础自检并清理服务进程时：
+
+```bash
+python scripts/launcher.py start --self-test
+```
+
+## 开发与质量检查
+
+以下检查适合在提交 PR 前运行。命令完成且退出码为 0 才表示对应检查通过；未运行的检查不得标记为通过。
 
 ```bash
 python scripts/check_utf8.py
 python scripts/check_code_style.py
+python scripts/check_public_release.py
+python scripts/verify_manifest.py
 python -m unittest discover -s tests -v
 python -m unittest discover -s bench -p 'test_*.py' -v
-python -m bench.audited_recovery_http --output results/audited_recovery_http
 ```
 
-若安装了 Go，继续执行：
+安装 Go 后：
 
 ```bash
 cd mock
@@ -57,42 +103,51 @@ go vet ./...
 cd ..
 ```
 
-已归档的隔离 HTTP 恢复实验覆盖 **2 引擎 × 2 故障 × 11 证据状态，共 44 个场景**，观察到 2 次安全确认、42 次未完成、0 次不安全确认与 0 次恢复阶段新增 HTTP 写入请求。**B5 与 RAGuard 在该协议下持平**。研究适配器对双方都禁止二次写入；不能将这个结果宣传为生产端 Gateway 的独有安全能力或统计显著优势。
+- 代码使用简短、准确的**简体中文注释和 docstring**，保留必要的英语标识符、协议名称。
+- 文件头仅说明职责，不写十几行以上的口号式注释；禁止 `==========`、长横线等装饰性分隔。
+- 尽量用小函数、明确命名和最小必要抽象表达逻辑，不为“整洁”引入空包装层。
+- 检查脚本目前对“缺中文注释”报告待补文件；**提示不等于强制通过率门槛**，需结合人工审查。
+- 不要重排冻结实验的 CSV、修改既定随机种子或以新结果覆盖旧归档。
 
-原始文件为 `episodes.csv`、`protocol.json`、`REPORT.md` 和 `SHA256SUMS.json`。完整实验前提、如何独立复现及失效条件见 [复现协议](research/SoftwareX_reproducibility.md)，CI 工件见 [GitHub Actions](https://github.com/lovesky514514-cmd/RAGuard/actions)。
+## 学术复现和已知结果
 
-## 项目结构
-
-```text
-raguard/   可信身份、持久账本、恢复策略、HTTP 入口
-mock/      Go 故障服务器与独立物理效果记录
-bench/     B5 强基线、配对实验、预算和证据审计
-tests/     核心逻辑与安全回归
-scripts/   启动、自检、隐私扫描、哈希校验
-docs/      设计、使用、安全边界、唯一问题记录
-research/  论文草稿、复现协议与研究判断
-results/   固定参考样本；本机生成数据默认不提交
-```
-
-## 维护约定
-
-新增代码采用中文的简短 docstring / 注释、UTF-8 无 BOM 和清晰命名；Go 代码使用 `gofmt`；不使用 `==========` 一类长装饰分隔线。维护前请阅读 [代码规范](CODING_STANDARDS.md)。
+研究复现首先固定**完整提交 SHA**，记录 Python、Go、操作系统与运行参数。论文指定的测试基线与本维护分支并不等同，不能混合不同分支结果。
 
 ```bash
-python scripts/check_code_style.py
-python scripts/check_public_release.py
-python scripts/verify_manifest.py
+python -m bench.audited_recovery_http --output results/audited_recovery_http
 ```
 
-复现或报告问题请说明固定提交 SHA、Python / Go 版本、操作系统、命令和实际输出。统一维护 [问题记录](docs/问题记录.md)，不要新增多个版本化问题文档。提交 PR 应包含最小复现和回归测试，正式 Gateway 的写入安全边界不允许因研究方便而被放宽。
+已有隔离 HTTP 审计对照采用 2 个引擎（B5、RAGuard）× 2 类故障 × 11 种回读状态，共 **44 个确定性案例**。归档描述为：
 
-## 论文与发布
+| 指标 | 观察 |
+| --- | ---: |
+| 安全确认 | 2 |
+| 未完成 | 42 |
+| 不安全确认 | 0（观察值） |
+| 恢复阶段新增外部写入请求 | 0（观察值） |
+| 相对 B5 的确认优势 | 未观察到 |
 
-- [SoftwareX 英文稿](research/SoftwareX_manuscript.md)
-- [实验复现说明](research/SoftwareX_reproducibility.md)
-- [原创性及投稿定位](research/SoftwareX_positioning.md)
-- [投稿前验收](research/投稿验收.md)
+**限制**：双方都通过共同研究适配器禁止恢复阶段二次写入；因此“零新增写入”不是 RAGuard 的独有能力。44 个固定案例不是 44 个独立生产样本。回环读取不是第三方密码学签名。更完整的协议、字段和结果解释见 [复现协议](research/SoftwareX_reproducibility.md)。
 
-条件式证据规划（ECF/CCEP）仅作为探索性研究保留；与掌握相同元信息的强规则持平，目前不支持新算法优越性声明。论文投稿还需要独立环境复现、永久归档及作者信息审核。
+期望产物包括 `episodes.csv`、`protocol.json`、`REPORT.md` 和 `SHA256SUMS.json`。应逐项核对哈希及完整配对，不得只从汇总数字推导论文结论。永久 DOI、独立复现、文献完整比较及期刊格式检查仍属于投稿前事项，不应标为已完成。
 
-项目依据 [Apache License 2.0](LICENSE) 开源，署名见 [NOTICE](NOTICE)。不要提交 API 密钥、个人绝对路径、私有邮箱、客户数据或真实支付记录。
+## 分支与科研交接
+
+| 分支 | 定位 |
+| --- | --- |
+| `main` | 仓库默认入口和公开说明 |
+| `2.0` | 保留的稳定研究基线；不因文档整理修改冻结证据 |
+| `maintenance/repository-quality` | README、代码可读性和静态检查维护 |
+| `research/softwarex-submission` | 论文准备与配套研究文件 |
+| 其他 `research/*` | 独立实验探索，不自动代表正式结果 |
+
+**交接时务必记录准确的 commit SHA、命令、依赖版本、原始输出、哈希和未通过项。** 不可把实验性分支的探索结论直接写成默认分支的功能。研究问题的新增、修复、复测和遗留状态统一追加到 [问题记录](docs/问题记录.md)。
+
+## 安全、隐私与许可
+
+- 项目按 [Apache License 2.0](LICENSE) 发布，许可声明详见 [NOTICE](NOTICE)。
+- 不提交 API Key、Token、真实交易数据、用户个人资料、私有邮箱、个人绝对路径、日志、数据库或本机凭据。
+- 静态敏感信息扫描只能检查当前文件，**不能代替对 Git 历史、二进制、依赖供应链的安全审查**。
+- 不要将本地实验称为生产安全认证，也不要将相同规则与预算下的持平结果描述为显著超越强基线。
+
+如发现可复现问题，请在 Issue 中说明完整提交 SHA、系统及工具链、最小复现命令、期望行为、实际行为和必要的脱敏输出；涉及安全漏洞或秘密泄漏的内容不要直接公开。
