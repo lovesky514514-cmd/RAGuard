@@ -1,3 +1,4 @@
+// 验证本地幂等窗口、范围隔离和并发下的真实物理副作用。
 package windowlab
 
 import (
