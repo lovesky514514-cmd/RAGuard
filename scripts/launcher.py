@@ -200,8 +200,17 @@ def check() -> None:
         record("未安装 Go：Go 源码测试和 vet 未执行；继续验证内置沙箱的真实启动。")
         if bundled is None:
             raise LaunchError("没有可验证的沙箱程序，无法完成自检。")
-    start(self_test=True)
-    record("本地可执行检查完成；未执行的项目已在上方明确标注。")
+    # 检查期间可能已有实例占用端口；不能为自检而停止正在运行的服务。
+    busy = [port for port in (MOCK_PORT, GATEWAY_PORT) if port_is_busy(port)]
+    if busy:
+        ports = "、".join(str(port) for port in busy)
+        record(f"端口 {ports} 已被占用，保留正在运行的服务和其他占用进程。")
+        record("源码、单元测试和可用的 Go 检查已完成；独立启动、演示与退出自检已跳过（未执行）。")
+        record("如需完成独立启停自检，请先在启动窗口按 Ctrl+C 正常关闭服务，再重新运行检查.bat。")
+    else:
+        start(self_test=True)
+        record("独立启动、演示与退出自检已执行。")
+    record("本地检查完成；跳过的验收项目不计为通过。")
 
 
 def experiment() -> None:
