@@ -20,6 +20,7 @@ RAGuard 用可信业务身份、持久化执行账本和正向回读证据管理
 | 理解业务身份、账本、执行代次 | [设计说明](docs/DESIGN.md) |
 | 了解不能保证的情况 | [安全边界](docs/SECURITY.md) |
 | 了解故障配对和评分指标 | [实验协议](docs/EXPERIMENTS.md) |
+| 查看项目开发、试验与独立复现全过程 | [进展日志](docs/进展日志.md) |
 | 查看历次问题及验证状态 | [唯一问题记录](docs/问题记录.md) |
 | 维护、评审和提交代码 | [代码规范](CODING_STANDARDS.md) |
 | 阅读论文初稿与复现实验 | [科研分支](https://github.com/lovesky514514-cmd/RAGuard/tree/research/softwarex-submission) |
