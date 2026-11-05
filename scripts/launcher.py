@@ -197,7 +197,7 @@ def check() -> None:
             command_output([go, *arguments], cwd=ROOT / "mock")
     else:
         # 已提供的 EXE 能用于实际实验，但不代替源码编译、Go 单测和 vet。
-        record("未安装 Go：Go 源码测试和 vet 未执行；继续验证内置沙箱的真实启动。")
+        record("未安装 Go：Go 源码测试和 vet 未执行；端口空闲时将验证内置沙箱的真实启动。")
         if bundled is None:
             raise LaunchError("没有可验证的沙箱程序，无法完成自检。")
     # 检查期间可能已有实例占用端口；不能为自检而停止正在运行的服务。
