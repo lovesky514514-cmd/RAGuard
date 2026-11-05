@@ -56,6 +56,7 @@ class LauncherTests(unittest.TestCase):
              patch.object(launcher.shutil, "which", return_value=None), \
              patch.object(launcher, "command_output") as commands, \
              patch.object(launcher, "start") as start, \
+             patch.object(launcher, "port_is_busy", return_value=False), \
              patch.object(launcher, "record") as record:
             launcher.check()
             expected = {
@@ -70,6 +71,35 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(commands.call_count, 7)
             start.assert_called_once_with(self_test=True)
             self.assertTrue(any("未执行" in item.args[0] for item in record.call_args_list))
+
+    def test_check_with_running_services_skips_only_startup(self):
+        """已有服务占用两个端口时，静态检查继续执行且不停止旧进程。"""
+        with patch.object(launcher, "bundled_windows_sandbox", return_value=Path("mock.exe")), \
+             patch.object(launcher, "ensure_tools"), \
+             patch.object(launcher, "command_output") as commands, \
+             patch.object(launcher, "start") as start, \
+             patch.object(launcher, "port_is_busy", side_effect=lambda p: p in (8181, 8088)), \
+             patch.object(launcher.shutil, "which", return_value=None), \
+             patch.object(launcher, "record") as record:
+            launcher.check()
+            self.assertEqual(commands.call_count, 7)
+            start.assert_not_called()
+            messages = [call.args[0] for call in record.call_args_list]
+            self.assertTrue(any("8181" in message and "8088" in message for message in messages))
+            self.assertTrue(any("已跳过" in message for message in messages))
+
+    def test_check_with_one_port_busy_does_not_start_second_instance(self):
+        """只占用网关端口也不能冒险启动另一个沙箱实例。"""
+        with patch.object(launcher, "bundled_windows_sandbox", return_value=Path("mock.exe")), \
+             patch.object(launcher, "ensure_tools"), \
+             patch.object(launcher, "command_output"), \
+             patch.object(launcher, "start") as start, \
+             patch.object(launcher, "port_is_busy", side_effect=lambda p: p == 8088), \
+             patch.object(launcher.shutil, "which", return_value=None), \
+             patch.object(launcher, "record") as record:
+            launcher.check()
+            start.assert_not_called()
+            self.assertTrue(any("8088" in call.args[0] for call in record.call_args_list))
 
     def test_without_go_windows_experiment_is_allowed(self):
         with patch.object(launcher, "bundled_windows_sandbox", return_value=Path("mock.exe")), \
