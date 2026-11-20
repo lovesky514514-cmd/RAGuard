@@ -1,0 +1,14 @@
+{
+  "kind": "isolated_audit_in_actual_persistent_recovery_call",
+  "engines": [
+    "b5",
+    "raguard"
+  ],
+  "no_production_gateway_changes": true,
+  "both_engines_block_recovery_writes": true,
+  "failure_variants_injected_at_python_adapter": true,
+  "positive_receipts_from_real_go_http_physical_log": true,
+  "authentication": "trusted_loopback_only_no_signature",
+  "no_fencing_or_safe_reissue_proof": true,
+  "physical_truth_accessible_to_evaluator_only": true
+}
