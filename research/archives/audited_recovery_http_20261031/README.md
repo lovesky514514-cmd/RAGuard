@@ -7,7 +7,7 @@ This directory preserves the **pre-existing** 44-case result files from GitHub A
 - Study design: 2 engines x 2 fault positions x 11 evidence variants = 44 isolated episodes.
 - Outcomes: 2 safe confirmations (1/engine), 42 unresolved (21/engine), 0 observed unsafe confirmations, 0 duplicate physical effects, 0 added real HTTP writes.
 - Crucial scope restriction: **both engines** share a research-only no-reissue adapter; this does not prove production exactly-once guarantees or an RAGuard advantage.
-- SHA-256 values reflect the **original exported bytes**. Text transfers may normalize line endings: check them before calling this an exact byte-identical copy. Never replace the original source artifact without explicitly recording any normalization.
+- SHA-256 values reflect the **original exported bytes**. The four committed artifact files were compared against the original archived files using their Git blob SHA-1 identities. All four exactly match their original bytes; independently verify the three SHA-256 digests against SHA256SUMS.json.
 - This Git branch/PR is a public source-control preservation layer. It is **not** a permanent DOI archive.
 - Prior to publishing a release: verify the record, authors' consent, license, personal-data scan, and transfer to Zenodo.
 
