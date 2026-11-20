@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use RAGuard, please cite the version archived for your study."
+title: "RAGuard: A Python-Go Testbed for Ambiguous Side-Effect Recovery"
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/lovesky514514-cmd/RAGuard"
+authors:
+  - family-names: Zhang
+    given-names: Lu
+    affiliation: Changchun University of Science and Technology
+  - family-names: Wang
+    given-names: Xintao
+    affiliation: Changchun University of Science and Technology
+  - family-names: Song
+    given-names: Jinze
+    affiliation: Changchun University of Science and Technology
+keywords:
+  - LLM agents
+  - fault injection
+  - side effects
+  - recovery
+  - research software
