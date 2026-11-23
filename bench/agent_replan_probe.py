@@ -137,7 +137,7 @@ def episode(binary: Path, engine: str, fault: str, choice: Suggestion,
         raise ValueError("实验条件非法")
     raw = raw_call("orders.create")
     target = Call.parse(raw)
-    with window_server(binary, ttl=6, extra_args=("--evidence-mode", "matched")) as origin, \\
+    with window_server(binary, ttl=6, extra_args=("--evidence-mode", "matched")) as origin, \
             tempfile.TemporaryDirectory() as tmp:
         client = WindowClient(origin, drop_count=2, drop_point=fault, scope=ORIGIN_SCOPE)
         work = Path(tmp)
