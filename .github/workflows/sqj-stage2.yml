@@ -1,0 +1,46 @@
+name: SQJ stage two evidence
+
+on:
+  push:
+    branches: [research/sqj-stage2-agent-ablation]
+  workflow_dispatch:
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Source integrity
+        id: integrity
+        continue-on-error: true
+        run: python scripts/verify_manifest.py
+      - name: Compile Python
+        run: python -m compileall -q bench raguard
+      - name: Focused unit contracts
+        run: python -m unittest bench.test_provenance_ablation bench.test_agent_replan_probe -v
+      - name: Real local Go provenance ablation
+        run: python -m bench.provenance_ablation --repeats 3 --output results/provenance_ablation_ci
+      - name: Scripted agent decision integration (not real LLM)
+        run: python -m bench.agent_replan_probe --mode scripted --repeats 1 --output results/agent_scripted_ci
+      - name: Preserve experimental evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqj-stage2-raw-evidence
+          path: |
+            results/provenance_ablation_ci/
+            results/agent_scripted_ci/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Fail if manifest was invalid
+        if: always() && steps.integrity.outcome == 'failure'
+        run: exit 1
