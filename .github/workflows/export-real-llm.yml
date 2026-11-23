@@ -1,0 +1,59 @@
+name: Export Windows real LLM research source
+
+on:
+  push:
+    branches: [research/sqj-stage2-agent-ablation]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify research source
+        run: |
+          python scripts/check_utf8.py
+          python scripts/check_public_release.py
+          python scripts/verify_manifest.py
+          python -m compileall -q raguard bench scripts
+          python -m unittest bench.test_agent_replan_probe bench.test_provenance_ablation -v
+      - name: Produce portable ZIP
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root = Path.cwd()
+          out = root / 'RAGuard_Real_LLM_Windows.zip'
+          exclusions = {'.git', '__pycache__', '.pytest_cache', '.venv', 'results', 'data', 'logs'}
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=8) as z:
+              for p in sorted(root.rglob('*')):
+                  if not p.is_file() or p == out:
+                      continue
+                  rel = p.relative_to(root)
+                  if any(part in exclusions for part in rel.parts):
+                      continue
+                  if rel.suffix in {'.pyc', '.sqlite3', '.db', '.log', '.pem', '.key'}:
+                      continue
+                  z.write(p, arcname='RAGuard_Real_LLM_Windows/' + rel.as_posix())
+          with zipfile.ZipFile(out) as z:
+              bad = z.testzip()
+              if bad:
+                  raise RuntimeError('ZIP CRC failure: ' + bad)
+              names = z.namelist()
+              required = ['bench/agent_replan_probe.py', 'scripts/run_real_llm.ps1',
+                          'docs/REAL_LLM_WINDOWS_RUN.md', 'mock/go.mod']
+              for path in required:
+                  if not any(x.endswith('/' + path) for x in names):
+                      raise RuntimeError('Missing package file: ' + path)
+              print('Packaged', len(names), 'files,', out.stat().st_size, 'bytes')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raguard-real-llm-windows-source
+          path: RAGuard_Real_LLM_Windows.zip
+          retention-days: 30
+          if-no-files-found: error
