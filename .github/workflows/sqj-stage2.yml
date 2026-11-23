@@ -19,11 +19,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - name: Check source integrity and unit contracts
-        run: |
-          python scripts/verify_manifest.py
-          python -m compileall -q bench raguard
-          python -m unittest bench.test_provenance_ablation bench.test_agent_replan_probe -v
+      - name: Source integrity
+        id: integrity
+        continue-on-error: true
+        run: python scripts/verify_manifest.py
+      - name: Compile Python
+        run: python -m compileall -q bench raguard
+      - name: Focused unit contracts
+        run: python -m unittest bench.test_provenance_ablation bench.test_agent_replan_probe -v
       - name: Real local Go provenance ablation
         run: python -m bench.provenance_ablation --repeats 3 --output results/provenance_ablation_ci
       - name: Scripted agent decision integration (not real LLM)
@@ -38,3 +41,6 @@ jobs:
             results/agent_scripted_ci/
           if-no-files-found: warn
           retention-days: 30
+      - name: Fail if manifest was invalid
+        if: always() && steps.integrity.outcome == 'failure'
+        run: exit 1
