@@ -25,7 +25,7 @@ class AgentReplanProbeTests(unittest.TestCase):
             ("https://example.test/v1/chat/completions", False),
             ("http://example.test/v1/chat/completions", True),
             ("http://localhost:11434/v1/chat/completions?token=secret", False),
-            ("https://user:pass@example.test/v1/chat/completions", True),
+            ("https://example.test/v1/chat/completions#fragment", True),
         ):
             with self.subTest(endpoint=endpoint):
                 with self.assertRaises(ValueError):
