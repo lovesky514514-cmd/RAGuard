@@ -63,7 +63,7 @@ class Stage4EvidenceTests(unittest.TestCase):
     def test_mismatched_engine_advice_fail(self):
         a, b = sample()
         changed = list(b)
-        changed[1] = replace(changed[1], suggested_action="retry_replanned")
+        changed[1] = replace(changed[1], suggested_action="retry_replanned", model_action_correct=0)
         with self.assertRaisesRegex(ValueError, "不匹配"):
             validate(a, changed, 1, "scripted")
 
