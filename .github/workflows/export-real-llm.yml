@@ -54,6 +54,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: raguard-stage3-windows-source
-          path: RAGuard_Real_LLM_Windows.zip
+          path: RAGuard_Stage3_Windows.zip
           retention-days: 30
           if-no-files-found: error
