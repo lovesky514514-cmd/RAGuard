@@ -1,0 +1,17 @@
+{
+  "kind": "agent_decision_local_go_probe",
+  "mode": "real_llm",
+  "model": "qwen2.5:7b",
+  "repeats": 3,
+  "actions": [
+    "stop",
+    "retry_same",
+    "retry_replanned"
+  ],
+  "original_effects_evaluator_only": true,
+  "b5_and_raguard_receive_same_suggestion": true,
+  "llm_not_shown_hidden_fault_or_effects": true,
+  "no_real_provider_business_calls": true,
+  "no_general_agent_benchmark_claim": true,
+  "model_responses_store_sha256_only": true
+}
