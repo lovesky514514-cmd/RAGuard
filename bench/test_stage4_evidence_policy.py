@@ -26,7 +26,7 @@ def sample(repeats=1):
                     "confirm" if valid else "stop",
                     policy(case), 1, "", engine, 409, 200 if valid else 409,
                     int(case != "not_observed"), 0, 0, int(case != "not_observed"),
-                    int(valid), 0, 0, int(valid), int(not valid),
+                    int(valid), 0, int(valid), int(not valid),
                 ))
     return choices, rows
 
