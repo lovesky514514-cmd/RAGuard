@@ -1,0 +1,53 @@
+name: Export Stage 6 Windows research source
+
+on:
+  push:
+    branches: [research/sqj-stage6-concurrent-recovery]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Source verification
+        run: |
+          python scripts/check_utf8.py
+          python scripts/check_public_release.py
+          python scripts/verify_manifest.py
+      - name: Package full Windows research source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          root = Path.cwd()
+          dest = root / 'RAGuard_Stage6_Windows.zip'
+          skip = {'.git', '.venv', '__pycache__', '.pytest_cache', 'results', 'data', 'logs'}
+          with ZipFile(dest, 'w', ZIP_DEFLATED, compresslevel=8) as archive:
+              for path in sorted(root.rglob('*')):
+                  if not path.is_file() or path == dest:
+                      continue
+                  relative = path.relative_to(root)
+                  if any(part in skip for part in relative.parts):
+                      continue
+                  if path.suffix.lower() in {'.pyc', '.sqlite3', '.db', '.log', '.pem', '.key'}:
+                      continue
+                  archive.write(path, arcname='RAGuard_Stage6_Windows/' + relative.as_posix())
+          with ZipFile(dest) as archive:
+              if archive.testzip() is not None:
+                  raise RuntimeError('Damaged ZIP archive')
+              for name in ('bench/stage6_concurrent_recovery.py', 'docs/SQJ_STAGE6.md',
+                           'mock/windowlab/cmd/uncertainty/main.go', 'SOURCE_MANIFEST.sha256'):
+                  if 'RAGuard_Stage6_Windows/' + name not in archive.namelist():
+                      raise RuntimeError('Required source missing: ' + name)
+              print('Packaged', len(archive.namelist()), 'source files')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raguard-stage6-windows-source
+          path: RAGuard_Stage6_Windows.zip
+          retention-days: 30
+          if-no-files-found: error
