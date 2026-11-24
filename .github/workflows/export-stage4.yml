@@ -1,0 +1,59 @@
+name: Export Stage 4 Windows source
+
+on:
+  push:
+    branches: [research/sqj-stage4-evidence-policy]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source and unit rules
+        run: |
+          python scripts/check_utf8.py
+          python scripts/check_public_release.py
+          python scripts/verify_manifest.py
+          python -m unittest bench.test_stage4_evidence_policy -v
+      - name: Create full offline Windows source ZIP
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root = Path.cwd()
+          target = root / 'RAGuard_Stage4_Windows.zip'
+          skip = {'.git', '.venv', '__pycache__', '.pytest_cache',
+                  'results', 'data', 'logs'}
+          with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=8) as archive:
+              for file in sorted(root.rglob('*')):
+                  if not file.is_file() or file == target:
+                      continue
+                  rel = file.relative_to(root)
+                  if any(part in skip for part in rel.parts):
+                      continue
+                  if file.suffix.lower() in {'.pyc', '.sqlite3', '.db', '.log', '.pem', '.key'}:
+                      continue
+                  archive.write(file, arcname='RAGuard_Stage4_Windows/' + rel.as_posix())
+          with zipfile.ZipFile(target) as archive:
+              if archive.testzip():
+                  raise RuntimeError('Windows source ZIP CRC invalid')
+              files = archive.namelist()
+              for required in ('bench/stage4_evidence_policy.py',
+                               'bench/test_stage4_evidence_policy.py',
+                               'docs/SQJ_STAGE4.md',
+                               'SOURCE_MANIFEST.sha256', 'mock/go.mod'):
+                  if 'RAGuard_Stage4_Windows/' + required not in files:
+                      raise RuntimeError('Missing source file: ' + required)
+              print('Validated', len(files), 'source entries')
+          PY
+      - name: Upload full source
+        uses: actions/upload-artifact@v4
+        with:
+          name: raguard-stage4-windows-source
+          path: RAGuard_Stage4_Windows.zip
+          if-no-files-found: error
+          retention-days: 30
