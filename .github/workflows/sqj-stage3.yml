@@ -1,0 +1,39 @@
+name: SQJ stage 3 evidence-conditioned pilot
+
+on:
+  push:
+    branches: [research/sqj-stage3-evidence-conditioned]
+  workflow_dispatch:
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Source and focused tests
+        run: |
+          python scripts/check_utf8.py
+          python scripts/check_public_release.py
+          python scripts/verify_manifest.py
+          python -m compileall -q bench
+          python -m unittest bench.test_agent_evidence_study bench.test_agent_replan_probe -v
+      - name: Real Go scripted integration (not LLM)
+        run: |
+          python -m bench.agent_evidence_study --mode scripted --repeats 2 --seed 20261124 --output results/stage3_scripted_ci
+      - name: Archive raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage3-scripted-go-evidence
+          path: results/stage3_scripted_ci/
+          if-no-files-found: warn
+          retention-days: 30

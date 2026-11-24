@@ -1,0 +1,13 @@
+mode,model,repeat,fault,engine,suggested_action,response_sha256,initial_status,final_status,target_effects,other_effects,duplicate_effects,total_http_writes,false_confirmation,acknowledged_completion,unresolved
+real_llm,qwen2.5:7b,1,before_commit,b5,retry_same,8db72a00c4e5c918863446bddd3288574a783808a139c0056216ec165d4110af,409,200,1,0,0,1,0,1,0
+real_llm,qwen2.5:7b,1,before_commit,raguard,retry_same,8db72a00c4e5c918863446bddd3288574a783808a139c0056216ec165d4110af,409,200,1,0,0,1,0,1,0
+real_llm,qwen2.5:7b,1,after_commit,b5,retry_same,32caadeaca6a1e5c83919753fdb0ab6366c55c7699597cbdd86bd60bd9663506,409,200,1,0,0,3,0,1,0
+real_llm,qwen2.5:7b,1,after_commit,raguard,retry_same,32caadeaca6a1e5c83919753fdb0ab6366c55c7699597cbdd86bd60bd9663506,409,200,1,0,0,3,0,1,0
+real_llm,qwen2.5:7b,2,before_commit,b5,retry_same,dea447abca887f9dff5f8d268530720ed014211584c130108eec8c3f5474ab53,409,200,1,0,0,1,0,1,0
+real_llm,qwen2.5:7b,2,before_commit,raguard,retry_same,dea447abca887f9dff5f8d268530720ed014211584c130108eec8c3f5474ab53,409,200,1,0,0,1,0,1,0
+real_llm,qwen2.5:7b,2,after_commit,b5,retry_same,c8370fdb105aa9b93ae65c27fa00b53ecbcf6bde242cb303543b5286c1714c4a,409,200,1,0,0,3,0,1,0
+real_llm,qwen2.5:7b,2,after_commit,raguard,retry_same,c8370fdb105aa9b93ae65c27fa00b53ecbcf6bde242cb303543b5286c1714c4a,409,200,1,0,0,3,0,1,0
+real_llm,qwen2.5:7b,3,before_commit,b5,retry_same,49367fb31c9716ba558007fa1c0c53646f194673b088122c402b5fd644b06391,409,200,1,0,0,1,0,1,0
+real_llm,qwen2.5:7b,3,before_commit,raguard,retry_same,49367fb31c9716ba558007fa1c0c53646f194673b088122c402b5fd644b06391,409,200,1,0,0,1,0,1,0
+real_llm,qwen2.5:7b,3,after_commit,b5,retry_same,f1ba4d700b3777442aecfa045fb5e91d679d1e5917e65d0bb04b91d246a1e25d,409,200,1,0,0,3,0,1,0
+real_llm,qwen2.5:7b,3,after_commit,raguard,retry_same,f1ba4d700b3777442aecfa045fb5e91d679d1e5917e65d0bb04b91d246a1e25d,409,200,1,0,0,3,0,1,0

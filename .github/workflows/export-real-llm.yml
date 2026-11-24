@@ -2,7 +2,7 @@ name: Export Windows real LLM research source
 
 on:
   push:
-    branches: [research/sqj-stage2-agent-ablation]
+    branches: [research/sqj-stage3-evidence-conditioned]
   workflow_dispatch:
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
           from pathlib import Path
           import zipfile
           root = Path.cwd()
-          out = root / 'RAGuard_Real_LLM_Windows.zip'
+          out = root / 'RAGuard_Stage3_Windows.zip'
           exclusions = {'.git', '__pycache__', '.pytest_cache', '.venv', 'results', 'data', 'logs'}
           with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=8) as z:
               for p in sorted(root.rglob('*')):
@@ -45,7 +45,7 @@ jobs:
                   raise RuntimeError('ZIP CRC failure: ' + bad)
               names = z.namelist()
               required = ['bench/agent_replan_probe.py', 'scripts/run_real_llm.ps1',
-                          'docs/REAL_LLM_WINDOWS_RUN.md', 'mock/go.mod']
+                          'bench/agent_evidence_study.py', 'docs/SQJ_STAGE3.md', 'mock/go.mod']
               for path in required:
                   if not any(x.endswith('/' + path) for x in names):
                       raise RuntimeError('Missing package file: ' + path)
@@ -53,7 +53,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: raguard-real-llm-windows-source
-          path: RAGuard_Real_LLM_Windows.zip
+          name: raguard-stage3-windows-source
+          path: RAGuard_Stage3_Windows.zip
           retention-days: 30
           if-no-files-found: error
