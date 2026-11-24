@@ -1,0 +1,42 @@
+name: SQJ Stage 6 in-flight and concurrent recovery
+
+on:
+  push:
+    branches: [research/sqj-stage6-concurrent-recovery]
+  workflow_dispatch:
+
+jobs:
+  concurrency:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Integrity and focused regression
+        run: |
+          python scripts/check_utf8.py
+          python scripts/check_public_release.py
+          python scripts/verify_manifest.py
+          python -m compileall -q bench
+          python -m unittest bench.test_stage6_concurrent_recovery bench.test_window_uncertainty -v
+          cd mock
+          go test ./...
+          go vet ./...
+      - name: Real Go HTTP concurrency and pairwise evidence
+        run: |
+          python -m bench.stage6_concurrent_recovery --repeats 2 --seed 20261124 --output results/stage6_ci
+      - name: Preserve all raw outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage6-concurrent-go-evidence
+          path: results/stage6_ci/
+          retention-days: 30
+          if-no-files-found: warn

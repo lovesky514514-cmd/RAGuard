@@ -17,9 +17,9 @@ func send(w http.ResponseWriter, value any) {
  _ = json.NewEncoder(w).Encode(value)
 }
 
-func handler(ttl int64, mode string) (http.Handler,error) {
+func handler(ttl int64, mode string, dedupe bool) (http.Handler,error) {
  var clock atomic.Int64
- server,err:=windowlab.NewServer(ttl,clock.Load)
+ server,err:=windowlab.NewServerWithDedupe(ttl,clock.Load,dedupe)
  if err!=nil{return nil,err}
  view,err:=windowlab.NewEvidenceView(server,mode)
  if err!=nil{return nil,err}
@@ -63,10 +63,11 @@ func main() {
  addr:=flag.String("addr","127.0.0.1:8187","loopback address")
  ttl:=flag.Int64("ttl",6,"retention ticks")
  mode:=flag.String("evidence-mode","matched","evidence visibility profile")
+ noDedupe:=flag.Bool("no-dedupe",false,"research only: disable provider native idempotency")
  flag.Parse()
  host,_,err:=net.SplitHostPort(*addr)
  if err!=nil || host!="127.0.0.1" {log.Fatal("must bind 127.0.0.1")}
- h,err:=handler(*ttl,*mode)
+ h,err:=handler(*ttl,*mode,!*noDedupe)
  if err!=nil {log.Fatal(err)}
  log.Fatal(http.ListenAndServe(*addr,h))
 }
