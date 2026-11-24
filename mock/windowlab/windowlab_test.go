@@ -177,3 +177,27 @@ func TestInvalidInputsAndSettingsCannotChangeServerClock(t *testing.T) {
 		t.Fatal("invalid payload counted as attempt")
 	}
 }
+
+func TestResearchNoDedupeCreatesIndependentEffects(t *testing.T) {
+	var now atomic.Int64
+	s, err := NewServerWithDedupe(6, now.Load, false)
+	if err != nil { t.Fatal(err) }
+	srv := httptest.NewServer(s)
+	defer srv.Close()
+	a := execute(t, srv.URL, "region-a", "same-key", "digest")
+	b := execute(t, srv.URL, "region-a", "same-key", "digest")
+	if a.EffectID == b.EffectID || b.Replayed { t.Fatalf("non-idempotent mode unexpectedly deduped: %+v %+v", a, b) }
+	truth := snapshot(t, srv.URL)
+	if truth.Attempts != 2 || len(truth.Effects) != 2 { t.Fatalf("independent physical effects absent: %+v", truth) }
+}
+
+func TestDefaultServerRemainsIdempotent(t *testing.T) {
+	var now atomic.Int64
+	s, err := NewServer(6, now.Load)
+	if err != nil { t.Fatal(err) }
+	srv := httptest.NewServer(s)
+	defer srv.Close()
+	a := execute(t, srv.URL, "region-a", "same-key", "digest")
+	b := execute(t, srv.URL, "region-a", "same-key", "digest")
+	if a.EffectID != b.EffectID || !b.Replayed { t.Fatal("default deduplication was changed") }
+}

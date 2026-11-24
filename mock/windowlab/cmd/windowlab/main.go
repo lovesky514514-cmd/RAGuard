@@ -17,13 +17,14 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8186", "research loopback listen address")
 	ttl := flag.Int64("ttl", 4, "simulated idempotency retention ticks")
+	noDedupe := flag.Bool("no-dedupe", false, "research-only: disable provider idempotency")
 	flag.Parse()
 	host, _, err := net.SplitHostPort(*addr)
 	if err != nil || host != "127.0.0.1" {
 		log.Fatal("research server must bind 127.0.0.1")
 	}
 	var tick atomic.Int64
-	server, err := windowlab.NewServer(*ttl, tick.Load)
+	server, err := windowlab.NewServerWithDedupe(*ttl, tick.Load, !*noDedupe)
 	if err != nil {
 		log.Fatal(err)
 	}

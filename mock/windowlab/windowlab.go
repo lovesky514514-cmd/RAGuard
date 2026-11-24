@@ -51,14 +51,20 @@ type Server struct {
 	records  map[string]entry
 	effects  []Effect
 	attempts int
+	dedupe bool
 }
 
 // NewServer 不接受由 HTTP 客户端指定的时间或 TTL，保证物理真值独立。
 func NewServer(ttlTicks int64, clock Clock) (*Server, error) {
+	return NewServerWithDedupe(ttlTicks, clock, true)
+}
+
+// NewServerWithDedupe 仅供受控研究禁用服务端去重；默认入口始终启用去重。
+func NewServerWithDedupe(ttlTicks int64, clock Clock, dedupe bool) (*Server, error) {
 	if ttlTicks < 1 || clock == nil {
 		return nil, fmt.Errorf("invalid research TTL or server clock")
 	}
-	return &Server{now: clock, ttlTicks: ttlTicks, records: make(map[string]entry)}, nil
+	return &Server{now: clock, ttlTicks: ttlTicks, records: make(map[string]entry), dedupe: dedupe}, nil
 }
 
 func replyJSON(w http.ResponseWriter, code int, payload any) {
@@ -94,7 +100,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	id := input.Scope + "\x00" + input.Key
 	previous, ok := s.records[id]
-	if ok && now < previous.expiryTick {
+	if s.dedupe && ok && now < previous.expiryTick {
 		if previous.fingerprint != input.Fingerprint {
 			s.mu.Unlock()
 			replyJSON(w, http.StatusConflict, map[string]string{"error": "fingerprint_mismatch"})
@@ -109,7 +115,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	effect := Effect{ID: newID, Scope: input.Scope, Key: input.Key,
 		Fingerprint: input.Fingerprint, ServerTick: now}
 	s.effects = append(s.effects, effect)
-	s.records[id] = entry{fingerprint: input.Fingerprint, effectID: newID, expiryTick: now + s.ttlTicks}
+	if s.dedupe {
+		s.records[id] = entry{fingerprint: input.Fingerprint, effectID: newID, expiryTick: now + s.ttlTicks}
+	}
 	s.mu.Unlock()
 	replyJSON(w, http.StatusOK, Receipt{EffectID: newID})
 }
