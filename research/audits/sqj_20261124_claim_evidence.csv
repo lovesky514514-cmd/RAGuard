@@ -1,0 +1,8 @@
+stage,unit,count,claim,qualification
+historical,audited_episode,44,"2 safe confirmations / 42 unresolved","Shared no-reissue adapter; no model"
+stage3,independent_model_decision,12,"12 retry_same / 0 audit","24 methods; model decisions shared across engines"
+stage4a,independent_model_decision,9,"0 audit","Single 7B model; fixed prompt variants"
+stage4b,independent_model_decision,18,"0 conservative policy matches","36 engine episodes; policy-match not unsafe-effect rate"
+stage5,method_episode,96,"unaware duplicates 24 / contract duplicates 0","shared gate; contract unresolved 36"
+stage6,method_episode,162,"unaware duplicates 53 / client_age 51 / verified 0","shared privileged verified gate; 81 pairs"
+stage6,paired_comparison,81,"0 mismatched unsafe_confirmation pairs","7 mismatched duplicate-effect pairs; 22 write-count mismatches"
