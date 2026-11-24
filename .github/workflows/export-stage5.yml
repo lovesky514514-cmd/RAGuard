@@ -1,0 +1,56 @@
+name: Export Stage 5 Windows source
+
+on:
+  push:
+    branches: [research/sqj-stage5-contract-boundary]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source
+        run: |
+          python scripts/check_utf8.py
+          python scripts/check_public_release.py
+          python scripts/verify_manifest.py
+      - name: Build validated portable source ZIP
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root = Path.cwd()
+          target = root / 'RAGuard_Stage5_Windows.zip'
+          skip = {'.git', '.venv', '__pycache__', '.pytest_cache',
+                  'results', 'data', 'logs'}
+          with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=8) as archive:
+              for file in sorted(root.rglob('*')):
+                  if not file.is_file() or file == target:
+                      continue
+                  rel = file.relative_to(root)
+                  if any(part in skip for part in rel.parts):
+                      continue
+                  if file.suffix.lower() in {'.pyc', '.sqlite3', '.db', '.log', '.pem', '.key'}:
+                      continue
+                  archive.write(file, arcname='RAGuard_Stage5_Windows/' + rel.as_posix())
+          with zipfile.ZipFile(target) as archive:
+              if archive.testzip():
+                  raise RuntimeError('Invalid ZIP CRC')
+              for item in ('bench/stage5_contract_boundary.py',
+                           'bench/test_stage5_contract_boundary.py',
+                           'mock/windowlab/windowlab.go', 'docs/SQJ_STAGE5.md',
+                           'SOURCE_MANIFEST.sha256'):
+                  if 'RAGuard_Stage5_Windows/' + item not in archive.namelist():
+                      raise RuntimeError('Missing file: ' + item)
+              print('Validated ZIP entries', len(archive.namelist()))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raguard-stage5-windows-source
+          path: RAGuard_Stage5_Windows.zip
+          retention-days: 30
+          if-no-files-found: error
