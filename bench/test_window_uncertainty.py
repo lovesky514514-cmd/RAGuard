@@ -63,5 +63,48 @@ class LivePairTests(unittest.TestCase):
                 self.assertEqual((row.blocked, row.duplicate_effects), (1, 0))
 
 
+
+class ReleaseRecoveryTests(unittest.TestCase):
+    def test_lost_ack_after_release_confirms_server_state(self):
+        from unittest.mock import patch
+        from bench.window_uncertainty import release_held
+        replies = [ConnectionResetError("lost release acknowledgement"),
+                   {"released": True, "pending": 0}]
+        with patch("bench.window_uncertainty.control", side_effect=replies) as call:
+            release_held("http://127.0.0.1:1")
+        self.assertEqual([x.args[1] for x in call.call_args_list],
+                         ["release", "state"])
+
+    def test_retry_only_after_confirmed_still_pending(self):
+        from unittest.mock import patch
+        from bench.window_uncertainty import release_held
+        replies = [ConnectionResetError("connection reset"),
+                   {"released": False, "pending": 1},
+                   {"released": True, "pending": 1}]
+        with patch("bench.window_uncertainty.control", side_effect=replies) as call, \
+                patch("bench.window_uncertainty.time.sleep"):
+            release_held("http://127.0.0.1:1")
+        self.assertEqual([x.args[1] for x in call.call_args_list],
+                         ["release", "state", "release"])
+
+    def test_inconsistent_server_state_fails_closed(self):
+        from unittest.mock import patch
+        from bench.window_uncertainty import release_held
+        replies = [ConnectionResetError("connection reset"),
+                   {"released": False, "pending": 0}]
+        with patch("bench.window_uncertainty.control", side_effect=replies):
+            with self.assertRaisesRegex(RuntimeError, "状态与挂起请求数矛盾"):
+                release_held("http://127.0.0.1:1")
+
+    def test_unreachable_server_does_not_appear_released(self):
+        from unittest.mock import patch
+        from bench.window_uncertainty import release_held
+        with patch("bench.window_uncertainty.control",
+                   side_effect=ConnectionResetError("server unavailable")) as call, \
+                patch("bench.window_uncertainty.time.sleep"):
+            with self.assertRaisesRegex(RuntimeError, "无法由服务器状态确认"):
+                release_held("http://127.0.0.1:1")
+        self.assertEqual(call.call_count, 6)
+
 if __name__ == "__main__":
     unittest.main()

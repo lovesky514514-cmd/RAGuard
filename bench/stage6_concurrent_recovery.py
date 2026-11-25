@@ -17,7 +17,7 @@ import threading
 
 from bench.runner import raw_call
 from bench.window_live import METHODS, ORIGIN_SCOPE, WindowClient, engine_call, window_server
-from bench.window_uncertainty import Contract, StudyClient, admitted, control, pending
+from bench.window_uncertainty import Contract, StudyClient, admitted, control, pending, release_held
 from raguard.model import Call
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,7 +146,7 @@ def run_one(binary: Path, condition: Condition, engine: str, strategy: str,
         advanced = control(origin, "advance", {"ticks": condition.release_tick - tick})
         if advanced["server_tick"] != condition.release_tick:
             raise AssertionError("释放阶段时间错误")
-        control(origin, "release", {})
+        release_held(origin)
         pending(origin, 0)
         truth = control(origin, "effects")
 
