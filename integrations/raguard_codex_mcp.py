@@ -238,9 +238,11 @@ def dispatch(lab: ResearchLab, message: object) -> dict | None:
     message_id = message["id"]
     if type(message_id) not in (str, int):
         return _reply(None, code=-32600, error="Invalid Request")
+    params = message.get("params", {})
+    if not isinstance(params, dict):
+        return _reply(message_id, code=-32602, error="Invalid params")
     if method == "initialize":
-        params = message.get("params") or {}
-        requested = params.get("protocolVersion") if isinstance(params, dict) else None
+        requested = params.get("protocolVersion")
         version = requested if requested in PROTOCOLS else "2025-06-18"
         return _reply(message_id, result={
             "protocolVersion": version,
@@ -253,8 +255,7 @@ def dispatch(lab: ResearchLab, message: object) -> dict | None:
     if method == "tools/list":
         return _reply(message_id, result={"tools": list(TOOLS)})
     if method == "tools/call":
-        params = message.get("params")
-        if not isinstance(params, dict) or type(params.get("name")) is not str:
+        if type(params.get("name")) is not str:
             return _reply(message_id, code=-32602, error="Invalid params")
         try:
             result = lab.call(params["name"], params.get("arguments", {}))
@@ -283,7 +284,7 @@ def main() -> None:
             else:
                 try:
                     message = json.loads(line)
-                except (ValueError, UnicodeDecodeError):
+                except (ValueError, RecursionError):
                     answer = _reply(None, code=-32700, error="Parse error")
                 else:
                     answer = dispatch(lab, message)

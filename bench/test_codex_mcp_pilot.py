@@ -1,12 +1,14 @@
 """Codex MCP 本机研究插件的协议、真实 HTTP 反例与拒绝非法请求测试。"""
 
+from io import BytesIO, TextIOWrapper
 import json
 from pathlib import Path
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
-from integrations.raguard_codex_mcp import ResearchLab, dispatch
+from integrations.raguard_codex_mcp import ResearchLab, dispatch, main
 
 
 class MCPProtocolTests(unittest.TestCase):
@@ -46,6 +48,33 @@ class MCPProtocolTests(unittest.TestCase):
         self.assertEqual(response["cases"][4]["case_id"], "C05")
         self.assertNotIn("fault", json.dumps(response))
         self.assertNotIn("physical_effects", json.dumps(response))
+
+    def test_request_params_must_be_an_object_when_present(self):
+        for method in ("initialize", "tools/list", "ping"):
+            request = {"jsonrpc": "2.0", "method": method, "id": 13}
+            for params in ("wrong type", [], None, False, 0):
+                with self.subTest(method=method, params=params):
+                    response = dispatch(self.lab, {**request, "params": params})
+                    self.assertEqual(response["id"], 13)
+                    self.assertEqual(response["error"]["code"], -32602)
+            self.assertIn("result", dispatch(self.lab, request))
+            self.assertIn("result", dispatch(self.lab, {**request, "params": {}}))
+        self.assertIsNone(dispatch(self.lab, {"jsonrpc": "2.0", "method": "ping", "params": []}))
+
+    def test_decoder_recursion_error_preserves_the_next_request(self):
+        ping = {"jsonrpc": "2.0", "id": 41, "method": "ping"}
+        wire = (b"{}\n" + json.dumps(ping).encode("utf-8") + b"\n")
+        with TextIOWrapper(BytesIO(wire), encoding="utf-8") as inp, \
+                TextIOWrapper(BytesIO(), encoding="utf-8") as out:
+            with patch("sys.stdin", inp), patch("sys.stdout", out), \
+                    patch("integrations.raguard_codex_mcp.json.loads",
+                          side_effect=[RecursionError("decoder recursion limit"), ping]):
+                main()
+            out.seek(0)
+            error, reply = map(json.loads, out)
+        self.assertIsNone(error["id"])
+        self.assertEqual(error["error"]["code"], -32700)
+        self.assertEqual(reply, {"jsonrpc": "2.0", "id": 41, "result": {}})
 
     def test_stdio_subprocess_produces_only_json_rpc(self):
         root = Path(__file__).resolve().parents[1]
