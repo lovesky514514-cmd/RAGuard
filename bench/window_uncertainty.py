@@ -12,6 +12,8 @@ import subprocess
 import tempfile
 import time
 import urllib.request
+import urllib.error
+import http.client
 
 from bench.window_uncertainty_analysis import paired_rows
 from bench.runner import raw_call
@@ -92,6 +94,43 @@ def control(origin: str, endpoint: str, payload: dict | None = None) -> dict:
         return json.load(response)
 
 
+
+def release_held(origin: str) -> None:
+    """释放一次性在途请求：丢失回执时只在服务器仍挂起时重发。"""
+    retryable = (ConnectionError, TimeoutError, http.client.RemoteDisconnected,
+                 urllib.error.URLError)
+    last_error: Exception | None = None
+    may_send = True
+    for attempt in range(5):
+        if may_send:
+            try:
+                result = control(origin, "release", {})
+                if result.get("released") is not True:
+                    raise RuntimeError("服务器未确认释放挂起请求")
+                return
+            except urllib.error.HTTPError as exc:
+                if exc.code != 409:
+                    raise
+                last_error = exc
+            except retryable as exc:
+                last_error = exc
+        # 无法确认 /release 是否生效时，只允许先读取监督器状态。
+        try:
+            state = control(origin, "state")
+        except retryable as exc:
+            last_error = exc
+            may_send = False
+        else:
+            if state.get("released") is True:
+                return
+            if state.get("pending") != 1:
+                raise RuntimeError("释放状态与挂起请求数矛盾") from last_error
+            may_send = True
+        if attempt < 4:
+            time.sleep(0.05)
+    raise RuntimeError("释放结果无法由服务器状态确认") from last_error
+
+
 def pending(origin: str, target: int) -> None:
     deadline = time.monotonic() + 2
     while time.monotonic() < deadline:
@@ -142,7 +181,7 @@ def run_case(binary: Path, method: str, strategy: str, condition: tuple,
         final = engine_call(method, workdir, client, raw) if permitted else 409
         if fault == "inflight":
             control(origin, "advance", {"ticks": ttl})
-            control(origin, "release", {})
+            release_held(origin)
             pending(origin, 0)
         truth = control(origin, "effects")
     effects = truth["effects"]
