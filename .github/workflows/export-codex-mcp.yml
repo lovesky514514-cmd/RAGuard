@@ -1,0 +1,51 @@
+name: Export Codex MCP Windows source
+
+on:
+  push:
+    branches: [research/codex-mcp-pilot]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify complete source and make Windows ZIP
+        run: |
+          python scripts/check_utf8.py
+          python scripts/check_public_release.py
+          python scripts/verify_manifest.py
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root = Path.cwd()
+          target = root / 'RAGuard_Codex_MCP_Windows.zip'
+          ignored = {'.git','.venv','__pycache__','.pytest_cache','results','data','logs'}
+          with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as out:
+              for path in sorted(root.rglob('*')):
+                  if not path.is_file() or path == target:
+                      continue
+                  rel = path.relative_to(root)
+                  if any(part in ignored for part in rel.parts):
+                      continue
+                  if path.suffix.lower() in {'.pyc','.sqlite3','.db','.log','.pem','.key'}:
+                      continue
+                  out.write(path,arcname='RAGuard_Codex_MCP_Windows/'+rel.as_posix())
+          with zipfile.ZipFile(target) as archive:
+              if archive.testzip():
+                  raise RuntimeError('CRC mismatch')
+              for item in ('integrations/raguard_codex_mcp.py','bench/test_codex_mcp_pilot.py',
+                           'docs/CODEX_MCP_PILOT.md','SOURCE_MANIFEST.sha256'):
+                  if 'RAGuard_Codex_MCP_Windows/'+item not in archive.namelist():
+                      raise RuntimeError('Missing '+item)
+              print('Verified entries:',len(archive.namelist()))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raguard-codex-mcp-windows-source
+          path: RAGuard_Codex_MCP_Windows.zip
+          if-no-files-found: error
+          retention-days: 30
